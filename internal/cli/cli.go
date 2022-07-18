@@ -35,7 +35,7 @@ func Run() int {
 		} else {
 			var bindErr error
 			if arg, bindErr = BindArgs(ctx, v); bindErr != nil {
-				return bindErr
+				return fmt.Errorf("%s", ctx.Color().Red(bindErr.Error()))
 			}
 		}
 		if arg.Verbose {

@@ -20,3 +20,6 @@
 
 # Build Binaries
 main
+
+# environment variables
+\.env

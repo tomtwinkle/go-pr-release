@@ -39,14 +39,14 @@ type Args struct {
 	Version       bool     `cli:"v,version" usage:"Version" namev:"--version"`
 }
 
-func Run(name, version string) int {
+func Run(name, version, commit, date string) int {
 	return cli.Run(new(Args), func(c *cli.Context) error {
 		argv, ok := c.Argv().(*Args)
 		if !ok {
 			return fmt.Errorf("argument type mismatch [%T]", c.Argv())
 		}
 		if argv.Version {
-			fmt.Println(c.Color().Green(fmt.Sprintf("%s %s", name, version)))
+			c.String(c.Color().Green(fmt.Sprintf("%s %s %s [%s]", name, version, commit, date)))
 			return nil
 		}
 

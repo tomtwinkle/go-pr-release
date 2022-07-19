@@ -31,5 +31,5 @@ jobs:
 
       - name: Test code
         env:
-          GO_PR_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GO_PR_RELEASE_TOKEN: ${{ secrets.GO_PR_RELEASE_TOKEN }}
         run: gotestsum --junitfile unit-tests.xml -- -v -race ./...

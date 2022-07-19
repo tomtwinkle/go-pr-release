@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -82,11 +81,10 @@ func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, error) {
 	url := remote.Config().URLs[0]
 	url = strings.TrimPrefix(url, "https://github.com/")
 	url = strings.TrimPrefix(url, "git@github.com:")
-	reg := regexp.MustCompile(`^([^/]+)/(.+)\.git$`)
-
-	owner := reg.ReplaceAllString(url, "$1")
-	repo := reg.ReplaceAllString(url, "$2")
-
+	url = strings.TrimSuffix(url, ".git")
+	ss := strings.Split(url, "/")
+	owner := ss[0]
+	repo := ss[1]
 	return &RemoteConfig{owner, repo}, nil
 }
 

@@ -31,7 +31,6 @@ on:
   push:
     branches:
       - develop
-      - enhancement/test-ci-go-pr-release
 
 jobs:
   test:

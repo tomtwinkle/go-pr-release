@@ -1,30 +1,51 @@
 package markdown_test
 
 import (
-	"context"
-	"os"
 	"testing"
+	"time"
 
-	"github.com/tomtwinkle/go-pr-release/internal/pkg/gh"
-
+	"github.com/bxcodec/faker/v3"
+	"github.com/google/go-github/v45/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/tomtwinkle/go-pr-release/internal/markdown"
 )
 
 func TestMakePRBody(t *testing.T) {
 	t.Run("make pr body default", func(t *testing.T) {
-		ctx := context.Background()
-		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
-		if !assert.True(t, ok) {
-			return
-		}
-		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{
-			Owner: "tomtwinkle",
-			Repo:  "go-pr-release-test",
-		})
-		prs, err := g.GetMergedPRs(ctx, "develop", "main")
-		if !assert.NoError(t, err) {
-			return
+		now := time.Now()
+		prs := []*github.PullRequest{
+			{
+				Number:    github.Int(1),
+				Title:     github.String(faker.Name()),
+				CreatedAt: &now,
+				UpdatedAt: &now,
+				MergedAt:  &now,
+				Labels:    nil,
+				User: &github.User{
+					Login:     github.String(faker.Name()),
+					AvatarURL: github.String("https://example.com"),
+					HTMLURL:   github.String("https://example.com"),
+				},
+				HTMLURL:            github.String("https://example.com/1"),
+				Assignees:          nil,
+				RequestedReviewers: nil,
+			},
+			{
+				Number:    github.Int(2),
+				Title:     github.String(faker.Name()),
+				CreatedAt: &now,
+				UpdatedAt: &now,
+				MergedAt:  &now,
+				Labels:    nil,
+				User: &github.User{
+					Login:     github.String(faker.Name()),
+					AvatarURL: github.String("https://example.com"),
+					HTMLURL:   github.String("https://example.com"),
+				},
+				HTMLURL:            github.String("https://example.com/1"),
+				Assignees:          nil,
+				RequestedReviewers: nil,
+			},
 		}
 		got, err := markdown.MakePRBody(prs, "")
 		assert.NoError(t, err)

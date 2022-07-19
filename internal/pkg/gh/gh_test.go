@@ -24,6 +24,10 @@ func TestGh_GitRemoteConfig(t *testing.T) {
 }
 
 func TestGh_GetMergedPRs(t *testing.T) {
+	if _, ok := os.LookupEnv("CI"); ok {
+		t.SkipNow()
+	}
+
 	t.Run("GetMergedPRs", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
 		if !assert.True(t, ok) {
@@ -52,6 +56,10 @@ func TestGh_GetMergedPRs(t *testing.T) {
 }
 
 func TestGh_CreatePRFromBranch(t *testing.T) {
+	if _, ok := os.LookupEnv("CI"); ok {
+		t.SkipNow()
+	}
+
 	t.Run("Create PR from branch", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
 		if !assert.True(t, ok) {
@@ -84,6 +92,10 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 }
 
 func TestGh_AssignReviews(t *testing.T) {
+	if _, ok := os.LookupEnv("CI"); ok {
+		t.SkipNow()
+	}
+
 	t.Run("AssignReviews", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
 		if !assert.True(t, ok) {
@@ -105,6 +117,10 @@ func TestGh_AssignReviews(t *testing.T) {
 }
 
 func TestGh_Labeling(t *testing.T) {
+	if _, ok := os.LookupEnv("CI"); ok {
+		t.SkipNow()
+	}
+
 	t.Run("Labeling", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
 		if !assert.True(t, ok) {

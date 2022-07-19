@@ -45,8 +45,8 @@ func TestValidateArgs(t *testing.T) {
 			assert.Error(t, err)
 			gotErrs := strings.Split(err.Error(), ",")
 			if assert.Equal(t, len(tt.errors), len(gotErrs)) {
-				for i, gotErr := range gotErrs {
-					assert.Contains(t, gotErr, tt.errors[i])
+				for _, wantErr := range tt.errors {
+					assert.Contains(t, err.Error(), wantErr)
 				}
 			}
 		})

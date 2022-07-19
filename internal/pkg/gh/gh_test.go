@@ -12,10 +12,15 @@ import (
 
 func TestGh_GitRemoteConfig(t *testing.T) {
 	t.Run("GitRemoteConfig", func(t *testing.T) {
-		remoteConfig, err := gh.GitRemoteConfig("../../../.git", "origin")
+		ctx := context.Background()
+		g, err := gh.New(ctx, "dummy", gh.RemoteConfigParam{
+			GitDirPath: "../../../.git",
+			RemoteName: "origin",
+		})
+
 		assert.NoError(t, err)
-		assert.Equal(t, "tomtwinkle", remoteConfig.Owner)
-		assert.Equal(t, "go-pr-release", remoteConfig.Repo)
+		assert.Equal(t, "tomtwinkle", g.Config().Owner)
+		assert.Equal(t, "go-pr-release", g.Config().Repo)
 	})
 }
 
@@ -32,8 +37,8 @@ func TestGh_GetMergedPRs(t *testing.T) {
 		toBranch := "main"
 		ctx := context.Background()
 
-		g := gh.New(ctx, token)
-		prs, err := g.GetMergedPRs(ctx, owner, repo, fromBranch, toBranch)
+		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		prs, err := g.GetMergedPRs(ctx, fromBranch, toBranch)
 		assert.NoError(t, err)
 		wantIDs := []int{9, 6}
 		wantTitles := []string{"feat: pr8 can merge", "feat: pr5 can merge"}
@@ -42,7 +47,7 @@ func TestGh_GetMergedPRs(t *testing.T) {
 			for i, pr := range prs {
 				assert.Equal(t, wantIDs[i], pr.GetNumber())
 				assert.Equal(t, wantTitles[i], pr.GetTitle())
-				t.Logf("%+v,%+v,%+v,%+v,%+v,%+v,%+v", pr.GetID(), pr.GetTitle(), pr.GetState(), pr.MergedAt, pr.GetMergeCommitSHA(), pr.GetUser().GetLogin(), pr.GetURL())
+				t.Logf("%+v,%+v,%+v,%+v,%+v,%+v,%+v", pr.GetID(), pr.GetTitle(), pr.GetState(), pr.MergedAt, pr.GetMergeCommitSHA(), pr.GetUser().GetHTMLURL(), pr.GetURL())
 			}
 		}
 	})
@@ -59,8 +64,8 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g := gh.New(ctx, token)
-		pr, err := g.CreateReleasePR(ctx, owner, repo, "Merge to main from develop", "develop", "main", "test")
+		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		assert.NoError(t, err)
 		t.Logf("%+v", pr)
 	})
@@ -74,8 +79,8 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g := gh.New(ctx, token)
-		pr, err := g.CreateReleasePR(ctx, owner, repo, "Merge to main from develop", "develop", "main", "test")
+		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		assert.NoError(t, err)
 		t.Logf("%+v", pr)
 	})

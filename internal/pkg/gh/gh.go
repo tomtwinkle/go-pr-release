@@ -18,17 +18,31 @@ var (
 )
 
 type Github interface {
-	CreateReleasePR(ctx context.Context, owner, repo, title, fromBranch, toBranch, body string) (*github.PullRequest, error)
-	GetMergedPRs(ctx context.Context, owner, repo, fromBranch, toBranch string) ([]*github.PullRequest, error)
+	Config() *RemoteConfig
+	CreateReleasePR(ctx context.Context, title, fromBranch, toBranch, body string) (*github.PullRequest, error)
+	GetMergedPRs(ctx context.Context, fromBranch, toBranch string) ([]*github.PullRequest, error)
 }
 
 type gh struct {
 	client *github.Client
+	config *RemoteConfig
 }
 
-func New(ctx context.Context, token string) Github {
+func New(ctx context.Context, token string, p RemoteConfigParam) (Github, error) {
+	config, err := gitRemoteConfig(p)
+	if err != nil {
+		return nil, err
+	}
 	return &gh{
 		client: newClient(ctx, token),
+		config: config,
+	}, nil
+}
+
+func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) Github {
+	return &gh{
+		client: newClient(ctx, token),
+		config: &remoteConfig,
 	}
 }
 
@@ -41,17 +55,22 @@ func newClient(ctx context.Context, token string) *github.Client {
 	return github.NewClient(tc)
 }
 
+type RemoteConfigParam struct {
+	GitDirPath string
+	RemoteName string
+}
+
 type RemoteConfig struct {
 	Owner string
 	Repo  string
 }
 
-func GitRemoteConfig(path, name string) (*RemoteConfig, error) {
-	r, err := git.PlainOpen(path)
+func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, error) {
+	r, err := git.PlainOpen(p.GitDirPath)
 	if err != nil {
 		return nil, err
 	}
-	remote, err := r.Remote(name)
+	remote, err := r.Remote(p.RemoteName)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +88,12 @@ func GitRemoteConfig(path, name string) (*RemoteConfig, error) {
 	return &RemoteConfig{owner, repo}, nil
 }
 
-func (g *gh) GetMergedPRs(ctx context.Context, owner, repo, fromBranch, toBranch string) ([]*github.PullRequest, error) {
-	base, _, err := g.client.Repositories.GetBranch(ctx, owner, repo, toBranch, true)
+func (g *gh) Config() *RemoteConfig {
+	return g.config
+}
+
+func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) ([]*github.PullRequest, error) {
+	base, _, err := g.client.Repositories.GetBranch(ctx, g.config.Owner, g.config.Repo, toBranch, true)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +109,7 @@ func (g *gh) GetMergedPRs(ctx context.Context, owner, repo, fromBranch, toBranch
 		Direction:   "desc",
 		ListOptions: github.ListOptions{},
 	}
-	prs, _, err := g.client.PullRequests.List(ctx, owner, repo, opt)
+	prs, _, err := g.client.PullRequests.List(ctx, g.config.Owner, g.config.Repo, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -102,8 +125,8 @@ func (g *gh) GetMergedPRs(ctx context.Context, owner, repo, fromBranch, toBranch
 	return mergedPRs, nil
 }
 
-func (g *gh) GetReleasePR(ctx context.Context, owner, repo, fromBranch, toBranch string) (*github.PullRequest, error) {
-	base, _, err := g.client.Repositories.GetBranch(ctx, owner, repo, fromBranch, true)
+func (g *gh) GetReleasePR(ctx context.Context, fromBranch, toBranch string) (*github.PullRequest, error) {
+	base, _, err := g.client.Repositories.GetBranch(ctx, g.config.Owner, g.config.Repo, fromBranch, true)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +140,7 @@ func (g *gh) GetReleasePR(ctx context.Context, owner, repo, fromBranch, toBranch
 			Direction:   "desc",
 			ListOptions: github.ListOptions{},
 		}
-		prs, _, err := g.client.PullRequests.ListPullRequestsWithCommit(ctx, owner, repo, baseCommit.GetSHA(), opt)
+		prs, _, err := g.client.PullRequests.ListPullRequestsWithCommit(ctx, g.config.Owner, g.config.Repo, baseCommit.GetSHA(), opt)
 		if err != nil {
 			return nil, err
 		}
@@ -136,9 +159,9 @@ func (g *gh) GetReleasePR(ctx context.Context, owner, repo, fromBranch, toBranch
 	return existsPR, nil
 }
 
-func (g *gh) CreateReleasePR(ctx context.Context, owner, repo, title, fromBranch, toBranch, body string) (*github.PullRequest, error) {
+func (g *gh) CreateReleasePR(ctx context.Context, title, fromBranch, toBranch, body string) (*github.PullRequest, error) {
 	var basePR *github.PullRequest
-	if pr, err := g.GetReleasePR(ctx, owner, repo, fromBranch, toBranch); err != nil {
+	if pr, err := g.GetReleasePR(ctx, fromBranch, toBranch); err != nil {
 		if !errors.Is(ErrBranchNotFound, err) {
 			return nil, err
 		}
@@ -149,7 +172,7 @@ func (g *gh) CreateReleasePR(ctx context.Context, owner, repo, title, fromBranch
 	if basePR != nil {
 		basePR.Title = github.String(title)
 		basePR.Body = github.String(body)
-		pr, _, err := g.client.PullRequests.Edit(ctx, owner, repo, basePR.GetNumber(), basePR)
+		pr, _, err := g.client.PullRequests.Edit(ctx, g.config.Owner, g.config.Repo, basePR.GetNumber(), basePR)
 		if err != nil {
 			return nil, err
 		}
@@ -157,11 +180,11 @@ func (g *gh) CreateReleasePR(ctx context.Context, owner, repo, title, fromBranch
 	} else {
 		newPR := &github.NewPullRequest{
 			Title: github.String(title),
-			Head:  github.String(fmt.Sprintf("%s:%s", owner, fromBranch)),
+			Head:  github.String(fmt.Sprintf("%s:%s", g.config.Owner, fromBranch)),
 			Base:  github.String(toBranch),
 			Body:  github.String(body),
 		}
-		pr, _, err := g.client.PullRequests.Create(ctx, owner, repo, newPR)
+		pr, _, err := g.client.PullRequests.Create(ctx, g.config.Owner, g.config.Repo, newPR)
 		if err != nil {
 			return nil, err
 		}

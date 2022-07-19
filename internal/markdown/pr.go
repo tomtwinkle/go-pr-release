@@ -3,6 +3,7 @@ package markdown
 import (
 	"bytes"
 	"html/template"
+	"os"
 	"time"
 
 	"github.com/google/go-github/v45/github"
@@ -54,7 +55,11 @@ func MakePRBody(prs []*github.PullRequest, templatePath string) (string, error) 
 
 	var tpl *template.Template
 	if templatePath != "" {
-		tpl = template.Must(template.New("base").Funcs(sprig.FuncMap()).ParseFiles(templatePath))
+		b, err := os.ReadFile(templatePath)
+		if err != nil {
+			return "", err
+		}
+		tpl = template.Must(template.New("base").Funcs(sprig.FuncMap()).Parse(string(b)))
 	} else {
 		tpl = template.Must(template.New("base").Funcs(sprig.FuncMap()).Parse(defaultTmpl))
 	}

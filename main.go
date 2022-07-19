@@ -6,9 +6,13 @@ import (
 	"github.com/tomtwinkle/go-pr-release/internal/cli"
 )
 
-var Name string
-var Version string
+var (
+	name    string
+	version string
+	commit  string
+	date    string
+)
 
 func main() {
-	os.Exit(cli.Run(Name, Version))
+	os.Exit(cli.Run(name, version, commit, date))
 }

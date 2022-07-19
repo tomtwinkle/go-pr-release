@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - develop
-      - enhancement/test-ci-go-pr-release
 
 jobs:
   test:
@@ -22,7 +21,7 @@ jobs:
 
       - name: Install go-pr-release
         env:
-          VERSION: 0.0.1
+          VERSION: 0.1.0
         run: curl -L https://github.com/tomtwinkle/go-pr-release/releases/download/v${VERSION}/go-pr-release_${VERSION}_linux_amd64.tar.gz | tar -xz
 
       - name: debug
@@ -35,7 +34,7 @@ jobs:
           GO_PR_RELEASE_DEVELOP: develop                   # Required. Develop Branch: Merge source
           GO_PR_RELEASE_LABELS: release                    # Optional. PullRequest labels. Multiple labels can be specified, separated by `commas`
           GO_PR_RELEASE_TITLE: ""                          # Optional. specify the title of the pull request
-          GO_PR_RELEASE_TEMPLATE: "./.github/template.tmpl"  # Optional. Specify a template file that can be described in `go template`
+          GO_PR_RELEASE_TEMPLATE: ".github/template.tmpl"  # Optional. Specify a template file that can be described in `go template`
           GO_PR_RELEASE_REVIEWERS: tomtwinkle              # Optional. PullRequest reviewers. Multiple reviewers can be specified, separated by `commas`
           GO_PR_RELEASE_DRY_RUN: false                     # Optional. if true, display only the results to be created without creating PullRequest
         run: ./go-pr-release

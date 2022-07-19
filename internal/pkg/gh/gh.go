@@ -21,6 +21,8 @@ type Github interface {
 	Config() *RemoteConfig
 	CreateReleasePR(ctx context.Context, title, fromBranch, toBranch, body string) (*github.PullRequest, error)
 	GetMergedPRs(ctx context.Context, fromBranch, toBranch string) ([]*github.PullRequest, error)
+	AssignReviews(ctx context.Context, prNumber int, reviewers ...string) (*github.PullRequest, error)
+	Labeling(ctx context.Context, prNumber int, labels ...string) ([]*github.Label, error)
 }
 
 type gh struct {
@@ -190,4 +192,22 @@ func (g *gh) CreateReleasePR(ctx context.Context, title, fromBranch, toBranch, b
 		}
 		return pr, nil
 	}
+}
+
+func (g *gh) AssignReviews(ctx context.Context, prNumber int, reviewers ...string) (*github.PullRequest, error) {
+	pr, _, err := g.client.PullRequests.RequestReviewers(ctx, g.config.Owner, g.config.Repo, prNumber, github.ReviewersRequest{
+		Reviewers: reviewers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return pr, nil
+}
+
+func (g *gh) Labeling(ctx context.Context, prNumber int, labels ...string) ([]*github.Label, error) {
+	resLabels, _, err := g.client.Issues.AddLabelsToIssue(ctx, g.config.Owner, g.config.Repo, prNumber, labels)
+	if err != nil {
+		return nil, err
+	}
+	return resLabels, nil
 }

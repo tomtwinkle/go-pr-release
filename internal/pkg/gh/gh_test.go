@@ -85,3 +85,47 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 		t.Logf("%+v", pr)
 	})
 }
+
+func TestGh_AssignReviews(t *testing.T) {
+	assert.NoError(t, godotenv.Load("../../../.env"))
+	t.Run("AssignReviews", func(t *testing.T) {
+		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
+		if !assert.True(t, ok) {
+			return
+		}
+		owner := "tomtwinkle"
+		repo := "go-pr-release-test"
+		ctx := context.Background()
+
+		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
+		if !assert.NoError(t, err) {
+			return
+		}
+		pr, err = g.AssignReviews(ctx, pr.GetNumber(), "soe-j")
+		assert.NoError(t, err)
+		t.Logf("%+v", pr.Assignees)
+	})
+}
+
+func TestGh_Labeling(t *testing.T) {
+	assert.NoError(t, godotenv.Load("../../../.env"))
+	t.Run("Labeling", func(t *testing.T) {
+		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
+		if !assert.True(t, ok) {
+			return
+		}
+		owner := "tomtwinkle"
+		repo := "go-pr-release-test"
+		ctx := context.Background()
+
+		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
+		if !assert.NoError(t, err) {
+			return
+		}
+		labels, err := g.Labeling(ctx, pr.GetNumber(), "test", "release", "develop")
+		assert.NoError(t, err)
+		t.Logf("%+v", labels)
+	})
+}

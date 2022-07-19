@@ -11,6 +11,50 @@ import (
 	"github.com/tomtwinkle/go-pr-release/internal/cli"
 )
 
+func TestLookupEnv(t *testing.T) {
+	tests := map[string]struct {
+		setEnv   func(t *testing.T)
+		wantArgs *cli.Args
+		wantErr  error
+	}{
+		"All": {
+			setEnv: func(t *testing.T) {
+				t.Setenv("GO_PR_RELEASE_DRY_RUN", "true")
+				t.Setenv("GO_PR_RELEASE_TOKEN", "dummy")
+				t.Setenv("GO_PR_RELEASE_RELEASE", "main")
+				t.Setenv("GO_PR_RELEASE_DEVELOP", "develop")
+				t.Setenv("GO_PR_RELEASE_TEMPLATE", "./template.tmpl")
+				t.Setenv("GO_PR_RELEASE_LABELS", "label1,label2")
+				t.Setenv("GO_PR_RELEASE_REVIEWERS", "reviewer1,reviewer2")
+			},
+			wantArgs: &cli.Args{
+				DryRun:        true,
+				Token:         "dummy",
+				ReleaseBranch: "main",
+				DevelopBranch: "develop",
+				Template:      "./template.tmpl",
+				Labels:        []string{"label1", "label2"},
+				Reviewers:     []string{"reviewer1", "reviewer2"},
+			},
+		},
+	}
+
+	for n, v := range tests {
+		name := n
+		tt := v
+		t.Run(name, func(t *testing.T) {
+			tt.setEnv(t)
+			got, err := cli.LookupEnv()
+			if tt.wantErr != nil {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantArgs, got)
+		})
+	}
+}
+
 func TestValidateArgs(t *testing.T) {
 	tests := map[string]struct {
 		args   *cli.Args

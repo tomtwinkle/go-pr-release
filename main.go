@@ -1,10 +1,14 @@
 package main
 
 import (
-	"github.com/tomtwinkle/go-pr-release/internal/cli"
 	"os"
+
+	"github.com/tomtwinkle/go-pr-release/internal/cli"
 )
 
+var Name string
+var Version string
+
 func main() {
-	os.Exit(cli.Run())
+	os.Exit(cli.Run(Name, Version))
 }

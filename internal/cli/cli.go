@@ -36,10 +36,20 @@ type Args struct {
 	Labels        []string `cli:"l,label" usage:"The labels list for adding to pull requests created. More than one can be specified" namev:"--label or environment variable:GO_PR_RELEASE_LABELS"`
 	Reviewers     []string `cli:"r,reviewer" usage:"Reviewers for pull requests. More than one can be specified" namev:"--reviewer or environment variable:GO_PR_RELEASE_REVIEWERS"`
 	Verbose       bool     `cli:"verbose" usage:"Output detailed logs" namev:"--verbose"`
+	Version       bool     `cli:"v,version" usage:"Version" namev:"--version"`
 }
 
-func Run() int {
+func Run(name, version string) int {
 	return cli.Run(new(Args), func(c *cli.Context) error {
+		argv, ok := c.Argv().(*Args)
+		if !ok {
+			return fmt.Errorf("argument type mismatch [%T]", c.Argv())
+		}
+		if argv.Version {
+			fmt.Println(c.Color().Green(fmt.Sprintf("%s %s", name, version)))
+			return nil
+		}
+
 		var arg *Args
 		if v, err := LookupEnv(); err != nil {
 			return err

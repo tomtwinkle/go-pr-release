@@ -49,7 +49,7 @@ jobs:
 
       - name: Install go-pr-release
         env:
-          VERSION: 0.0.1
+          VERSION: 0.1.0
         run: curl -L https://github.com/tomtwinkle/go-pr-release/releases/download/v${VERSION}/go-pr-release_${VERSION}_linux_amd64.tar.gz | tar -xz
 
       - name: debug

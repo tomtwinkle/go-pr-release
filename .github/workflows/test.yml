@@ -25,9 +25,11 @@ jobs:
           go-version: 1.18
 
       - name: Get dependencies
-        run: go get -v -t -d ./...
+        run: |
+          go install gotest.tools/gotestsum@latest
+          go get -v -t -d ./...
 
       - name: Test code
         env:
           GO_PR_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: go test -v -race ./...
+        run: gotestsum --junitfile unit-tests.xml -- -v -race ./...

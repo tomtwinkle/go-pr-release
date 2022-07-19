@@ -1,0 +1,33 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.18
+
+      - name: Get dependencies
+        run: go get -v -t -d ./...
+
+      - name: Test code
+        env:
+          GO_PR_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go test -v -race ./...

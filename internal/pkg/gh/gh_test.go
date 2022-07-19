@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/tomtwinkle/go-pr-release/internal/pkg/gh"
 )
@@ -25,7 +24,6 @@ func TestGh_GitRemoteConfig(t *testing.T) {
 }
 
 func TestGh_GetMergedPRs(t *testing.T) {
-	assert.NoError(t, godotenv.Load("../../../.env"))
 	t.Run("GetMergedPRs", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
 		if !assert.True(t, ok) {
@@ -54,7 +52,6 @@ func TestGh_GetMergedPRs(t *testing.T) {
 }
 
 func TestGh_CreatePRFromBranch(t *testing.T) {
-	assert.NoError(t, godotenv.Load("../../../.env"))
 	t.Run("Create PR from branch", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
 		if !assert.True(t, ok) {
@@ -87,7 +84,6 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 }
 
 func TestGh_AssignReviews(t *testing.T) {
-	assert.NoError(t, godotenv.Load("../../../.env"))
 	t.Run("AssignReviews", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
 		if !assert.True(t, ok) {
@@ -109,7 +105,6 @@ func TestGh_AssignReviews(t *testing.T) {
 }
 
 func TestGh_Labeling(t *testing.T) {
-	assert.NoError(t, godotenv.Load("../../../.env"))
 	t.Run("Labeling", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
 		if !assert.True(t, ok) {

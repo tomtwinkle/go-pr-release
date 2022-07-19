@@ -21,6 +21,7 @@ func TestLookupEnv(t *testing.T) {
 			setEnv: func(t *testing.T) {
 				t.Setenv("GO_PR_RELEASE_DRY_RUN", "true")
 				t.Setenv("GO_PR_RELEASE_TOKEN", "dummy")
+				t.Setenv("GO_PR_RELEASE_TITLE", "title")
 				t.Setenv("GO_PR_RELEASE_RELEASE", "main")
 				t.Setenv("GO_PR_RELEASE_DEVELOP", "develop")
 				t.Setenv("GO_PR_RELEASE_TEMPLATE", "./template.tmpl")
@@ -30,6 +31,7 @@ func TestLookupEnv(t *testing.T) {
 			wantArgs: &cli.Args{
 				DryRun:        true,
 				Token:         "dummy",
+				Title:         "title",
 				ReleaseBranch: "main",
 				DevelopBranch: "develop",
 				Template:      "./template.tmpl",

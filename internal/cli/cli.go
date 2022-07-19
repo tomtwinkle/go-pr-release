@@ -1,10 +1,15 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/tomtwinkle/go-pr-release/internal/pkg/gh"
+
+	"github.com/tomtwinkle/go-pr-release/internal/markdown"
 
 	tren "github.com/go-playground/validator/v10/translations/en"
 
@@ -15,10 +20,16 @@ import (
 	"github.com/tomtwinkle/go-pr-release/internal/pkg/env"
 )
 
+const (
+	gitDir        = ".git"
+	gitRemoteName = "origin"
+)
+
 type Args struct {
 	cli.Helper
 	DryRun        bool     `cli:"n,dry-run" usage:"Do not create/update a PR. Just prints out" namev:"--dry-run or environment variable:GO_PR_RELEASE_DRY_RUN"`
 	Token         string   `cli:"token" usage:"Token for GitHub API" validate:"required" namev:"--token or environment variable:GO_PR_RELEASE_TOKEN"`
+	Title         string   `cli:"title" usage:"Title for GitHub PullRequest" namev:"--title"`
 	ReleaseBranch string   `cli:"to,release-branch" usage:"Branch to be released" validate:"required" namev:"--release-branch or environment variable:GO_PR_RELEASE_RELEASE"`
 	DevelopBranch string   `cli:"from,develop-branch" usage:"The Branch that will be merged into the release Branch" validate:"required" namev:"--develop-branch or environment variable:GO_PR_RELEASE_DEVELOP"`
 	Template      string   `cli:"t,template" usage:"The template file path for pull requests created. This is an go template" namev:"--template or environment variable:GO_PR_RELEASE_TEMPLATE"`
@@ -28,20 +39,20 @@ type Args struct {
 }
 
 func Run() int {
-	return cli.Run(new(Args), func(ctx *cli.Context) error {
+	return cli.Run(new(Args), func(c *cli.Context) error {
 		var arg *Args
 		if v, err := LookupEnv(); err != nil {
 			return err
 		} else {
 			var bindErr error
-			if arg, bindErr = BindArgs(ctx, v); bindErr != nil {
-				return fmt.Errorf("%s", ctx.Color().Red(bindErr.Error()))
+			if arg, bindErr = BindArgs(c, v); bindErr != nil {
+				return fmt.Errorf("%s", c.Color().Red(bindErr.Error()))
 			}
 		}
 		if arg.Verbose {
-			ctx.JSONln(arg)
+			c.JSONln(arg)
 		}
-		return nil
+		return MakePR(arg)
 	})
 }
 
@@ -55,6 +66,11 @@ func LookupEnv() (*Args, error) {
 	}
 	if token, err := env.LookUpString("GO_PR_RELEASE_TOKEN", false); err == nil {
 		arg.Token = token
+	} else {
+		return nil, err
+	}
+	if title, err := env.LookUpString("GO_PR_RELEASE_TITLE", false); err == nil {
+		arg.Title = title
 	} else {
 		return nil, err
 	}
@@ -165,4 +181,48 @@ func transFunc(ut ut.Translator, fe validator.FieldError) string {
 		return fe.Error()
 	}
 	return t
+}
+
+func MakePR(arg *Args) error {
+	ctx := context.Background()
+	g, err := gh.New(ctx, arg.Token, gh.RemoteConfigParam{
+		GitDirPath: gitDir,
+		RemoteName: gitRemoteName,
+	})
+	if err != nil {
+		return err
+	}
+	mergedPRs, err := g.GetMergedPRs(ctx, arg.DevelopBranch, arg.ReleaseBranch)
+	if err != nil {
+		return err
+	}
+	body, err := markdown.MakePRBody(mergedPRs, arg.Template)
+	if err != nil {
+		return err
+	}
+	if arg.DryRun {
+		fmt.Println(body)
+		return nil
+	}
+	var title string
+	if arg.Title != "" {
+		title = arg.Title
+	} else {
+		title = fmt.Sprintf("Merge to %s from %s", arg.ReleaseBranch, arg.DevelopBranch)
+	}
+	pr, err := g.CreateReleasePR(ctx, title, arg.DevelopBranch, arg.ReleaseBranch, body)
+	if err != nil {
+		return err
+	}
+	if len(arg.Reviewers) > 0 {
+		if _, err := g.AssignReviews(ctx, pr.GetNumber(), arg.Reviewers...); err != nil {
+			return err
+		}
+	}
+	if len(arg.Labels) > 0 {
+		if _, err := g.Labeling(ctx, pr.GetNumber(), arg.Labels...); err != nil {
+			return err
+		}
+	}
+	return nil
 }

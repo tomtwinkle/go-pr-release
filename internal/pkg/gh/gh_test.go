@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/joho/godotenv"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/tomtwinkle/go-pr-release/internal/pkg/gh"
 )
@@ -27,6 +29,7 @@ func TestGh_GetMergedPRs(t *testing.T) {
 	if _, ok := os.LookupEnv("CI"); ok {
 		t.SkipNow()
 	}
+	assert.NoError(t, godotenv.Load("../../../.env"))
 
 	t.Run("GetMergedPRs", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
@@ -55,10 +58,33 @@ func TestGh_GetMergedPRs(t *testing.T) {
 	})
 }
 
+func TestGh_GetReleasePR(t *testing.T) {
+	if _, ok := os.LookupEnv("CI"); ok {
+		t.SkipNow()
+	}
+	assert.NoError(t, godotenv.Load("../../../.env"))
+
+	t.Run("Create PR from branch", func(t *testing.T) {
+		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
+		if !assert.True(t, ok) {
+			return
+		}
+		owner := "tomtwinkle"
+		repo := "go-pr-release-test"
+		ctx := context.Background()
+
+		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		pr, err := g.GetReleasePR(ctx, "develop", "main")
+		assert.NoError(t, err)
+		t.Logf("%+v", pr)
+	})
+}
+
 func TestGh_CreatePRFromBranch(t *testing.T) {
 	if _, ok := os.LookupEnv("CI"); ok {
 		t.SkipNow()
 	}
+	assert.NoError(t, godotenv.Load("../../../.env"))
 
 	t.Run("Create PR from branch", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
@@ -95,6 +121,7 @@ func TestGh_AssignReviews(t *testing.T) {
 	if _, ok := os.LookupEnv("CI"); ok {
 		t.SkipNow()
 	}
+	assert.NoError(t, godotenv.Load("../../../.env"))
 
 	t.Run("AssignReviews", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
@@ -120,6 +147,7 @@ func TestGh_Labeling(t *testing.T) {
 	if _, ok := os.LookupEnv("CI"); ok {
 		t.SkipNow()
 	}
+	assert.NoError(t, godotenv.Load("../../../.env"))
 
 	t.Run("Labeling", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")

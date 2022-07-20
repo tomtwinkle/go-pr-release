@@ -1,13 +1,13 @@
 # Releases
-{{ range .PullRequests }}
+{{- range .PullRequests }}
     {{- if ne .User.LoginName "dependabot[bot]" }}
-        {{- printf "- [ ] [%s] #%d @%s" (.MergedAt.Format "2006-01-02") .Number .User.LoginName}}
+{{ printf "- [ ] [%s] #%d @%s" (.MergedAt.Format "2006-01-02") .Number .User.LoginName}}
     {{- end }}
-{{ end }}
+{{- end }}
 
 # Dependabot
-{{ range .PullRequests }}
+{{- range .PullRequests }}
     {{- if eq .User.LoginName "dependabot[bot]" }}
-        {{- printf "- [ ] #%d @%s" .Number .User.LoginName}}
+{{ printf "- [ ] #%d @%s" .Number .User.LoginName}}
     {{- end }}
-{{ end }}
+{{- end }}

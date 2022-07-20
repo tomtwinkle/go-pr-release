@@ -119,6 +119,22 @@ func TestMakePRBody(t *testing.T) {
 				Assignees:          nil,
 				RequestedReviewers: nil,
 			},
+			{
+				Number:    github.Int(5),
+				Title:     github.String(faker.Name()),
+				CreatedAt: &now,
+				UpdatedAt: &now,
+				MergedAt:  &now,
+				Labels:    nil,
+				User: &github.User{
+					Login:     github.String(faker.Name()),
+					AvatarURL: github.String("https://example.com"),
+					HTMLURL:   github.String("https://example.com"),
+				},
+				HTMLURL:            github.String("https://example.com/5"),
+				Assignees:          nil,
+				RequestedReviewers: nil,
+			},
 		}
 		got, err := markdown.MakePRBody(prs, "testdata/template.tmpl")
 		assert.NoError(t, err)

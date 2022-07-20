@@ -19,6 +19,7 @@ var (
 type Github interface {
 	Config() *RemoteConfig
 	CreateReleasePR(ctx context.Context, title, fromBranch, toBranch, body string) (*github.PullRequest, error)
+	GetReleasePR(ctx context.Context, fromBranch, toBranch string) (*github.PullRequest, error)
 	GetMergedPRs(ctx context.Context, fromBranch, toBranch string) ([]*github.PullRequest, error)
 	AssignReviews(ctx context.Context, prNumber int, reviewers ...string) (*github.PullRequest, error)
 	Labeling(ctx context.Context, prNumber int, labels ...string) ([]*github.Label, error)
@@ -126,31 +127,23 @@ func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) ([]*
 }
 
 func (g *gh) GetReleasePR(ctx context.Context, fromBranch, toBranch string) (*github.PullRequest, error) {
-	base, _, err := g.client.Repositories.GetBranch(ctx, g.config.Owner, g.config.Repo, fromBranch, true)
+	var existsPR *github.PullRequest
+	opt := &github.PullRequestListOptions{
+		State:       "open",
+		Head:        fmt.Sprintf("origin/%s", fromBranch),
+		Base:        toBranch,
+		Sort:        "created",
+		Direction:   "desc",
+		ListOptions: github.ListOptions{},
+	}
+	prs, _, err := g.client.PullRequests.List(ctx, g.config.Owner, g.config.Repo, opt)
 	if err != nil {
 		return nil, err
 	}
-	var existsPR *github.PullRequest
-	if baseCommit := base.GetCommit(); baseCommit != nil {
-		opt := &github.PullRequestListOptions{
-			State:       "open",
-			Head:        fmt.Sprintf("origin/%s", toBranch),
-			Base:        fromBranch,
-			Sort:        "created",
-			Direction:   "desc",
-			ListOptions: github.ListOptions{},
-		}
-		prs, _, err := g.client.PullRequests.ListPullRequestsWithCommit(ctx, g.config.Owner, g.config.Repo, baseCommit.GetSHA(), opt)
-		if err != nil {
-			return nil, err
-		}
-		for _, pr := range prs {
-			if baseCommit.GetSHA() == pr.GetHead().GetSHA() {
-				if pr.MergedAt == nil {
-					existsPR = pr
-					break
-				}
-			}
+	for _, pr := range prs {
+		if pr.MergedAt == nil {
+			existsPR = pr
+			break
 		}
 	}
 	if existsPR == nil {

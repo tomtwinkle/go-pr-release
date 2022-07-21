@@ -33,7 +33,7 @@ on:
       - develop
 
 jobs:
-  test:
+  go-pr-release:
     name: go-pr-release
     runs-on: ubuntu-latest
 

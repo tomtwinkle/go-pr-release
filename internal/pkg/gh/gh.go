@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/go-git/go-git/v5"
 
@@ -94,34 +98,46 @@ func (g *gh) Config() *RemoteConfig {
 }
 
 func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) ([]*github.PullRequest, error) {
-	base, _, err := g.client.Repositories.GetBranch(ctx, g.config.Owner, g.config.Repo, toBranch, true)
+	commits, _, err := g.client.Repositories.CompareCommits(ctx, g.config.Owner, g.config.Repo, toBranch, fromBranch, nil)
 	if err != nil {
 		return nil, err
 	}
-	var lastMergedSHA *string
-	if cms := len(base.GetCommit().Parents); cms > 0 {
-		lastMergedSHA = base.GetCommit().Parents[cms-1].SHA
+	var mu sync.Mutex
+	eg, ctx := errgroup.WithContext(ctx)
+	listprs := make([]*github.PullRequest, 0)
+	for _, commit := range commits.Commits {
+		sha := commit.GetSHA()
+		eg.Go(func() error {
+			prs, _, err := g.client.PullRequests.ListPullRequestsWithCommit(ctx, g.config.Owner, g.config.Repo, sha, nil)
+			if err != nil {
+				return err
+			}
+			for _, pr := range prs {
+				if pr.MergedAt != nil {
+					mu.Lock()
+					listprs = append(listprs, pr)
+					mu.Unlock()
+				}
+			}
+			return nil
+		})
 	}
-	opt := &github.PullRequestListOptions{
-		State:       "closed",
-		Head:        fmt.Sprintf("origin/%s", toBranch),
-		Base:        fromBranch,
-		Sort:        "created",
-		Direction:   "desc",
-		ListOptions: github.ListOptions{},
-	}
-	prs, _, err := g.client.PullRequests.List(ctx, g.config.Owner, g.config.Repo, opt)
-	if err != nil {
+	if err := eg.Wait(); err != nil {
 		return nil, err
 	}
-	mergedPRs := make([]*github.PullRequest, 0, len(prs))
-	for _, pr := range prs {
-		if lastMergedSHA != nil && *lastMergedSHA == pr.GetMergeCommitSHA() {
-			break
+
+	sort.Slice(listprs, func(i, j int) bool {
+		return listprs[i].GetNumber() > listprs[j].GetNumber()
+	})
+
+	mergedPRs := make([]*github.PullRequest, 0, len(listprs))
+	uniq := make(map[int]struct{})
+	for _, v := range listprs {
+		if _, ok := uniq[v.GetNumber()]; ok {
+			continue
 		}
-		if pr.MergedAt != nil {
-			mergedPRs = append(mergedPRs, pr)
-		}
+		uniq[v.GetNumber()] = struct{}{}
+		mergedPRs = append(mergedPRs, v)
 	}
 	return mergedPRs, nil
 }

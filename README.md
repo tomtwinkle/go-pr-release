@@ -47,9 +47,7 @@ jobs:
           go-version: 1.18
 
       - name: Install go-pr-release
-        env:
-          VERSION: 0.1.5
-        run: curl -L https://github.com/tomtwinkle/go-pr-release/releases/download/v${VERSION}/go-pr-release_${VERSION}_linux_amd64.tar.gz | tar -xz
+        run: curl -s https://api.github.com/repos/tomtwinkle/go-pr-release/releases/latest | jq '.assets[] | select(.name | contains("linux_amd64")) | .browser_download_url' | xargs curl -L | tar -xz
 
       - name: Run
         env:

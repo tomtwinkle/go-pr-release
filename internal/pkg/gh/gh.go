@@ -224,23 +224,12 @@ func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (Pul
 	listprs := make([]*github.PullRequest, 0, len(allprs))
 	needAPICommitSHAs := make([]string, 0)
 	for _, commit := range commits {
-		var hitSHA bool
 		sha := commit.GetSHA()
 		if sha == "" {
 			continue
 		}
 		if pr, ok := allprs.FindHash(sha); ok {
 			listprs = append(listprs, pr)
-			continue
-		}
-		for _, parent := range commit.Parents {
-			if pr, ok := allprs.FindHash(parent.GetSHA()); ok {
-				listprs = append(listprs, pr)
-				hitSHA = true
-				break
-			}
-		}
-		if hitSHA {
 			continue
 		}
 		needAPICommitSHAs = append(needAPICommitSHAs, sha)

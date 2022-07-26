@@ -290,7 +290,7 @@ func (g *gh) GetReleasePR(ctx context.Context, fromBranch, toBranch string) (*gi
 		return nil, err
 	}
 	for _, pr := range prs {
-		if pr.MergedAt == nil {
+		if pr.GetBase().GetRef() == toBranch && pr.GetHead().GetRef() == fromBranch && pr.MergedAt == nil {
 			existsPR = pr
 			break
 		}

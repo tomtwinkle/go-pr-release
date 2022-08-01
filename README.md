@@ -41,11 +41,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: 1.18
-
       - name: Install go-pr-release
         run: curl -s https://api.github.com/repos/tomtwinkle/go-pr-release/releases/latest | jq '.assets[] | select(.name | contains("linux_amd64")) | .browser_download_url' | xargs curl -L | tar -xz
 

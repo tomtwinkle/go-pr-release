@@ -222,7 +222,7 @@ func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (Pul
 
 	// commit hash is matched against the hash value in the PullRequests. If it cannot be obtained, get it from Github API
 	listprs := make([]*github.PullRequest, 0, len(allprs))
-	needAPICommitSHAs := make([]string, 0)
+	//needAPICommitSHAs := make([]string, 0)
 	for _, commit := range commits {
 		sha := commit.GetSHA()
 		if sha == "" {
@@ -232,32 +232,33 @@ func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (Pul
 			listprs = append(listprs, pr)
 			continue
 		}
-		needAPICommitSHAs = append(needAPICommitSHAs, sha)
+		//needAPICommitSHAs = append(needAPICommitSHAs, sha)
 	}
 
-	afterctx, afterCancel := context.WithTimeout(ctx, AsynchronousTimeout)
-	defer afterCancel()
-	eg, afterctx = errgroup.WithContext(afterctx)
-	var mu sync.Mutex
-	for _, sha := range needAPICommitSHAs {
-		eg.Go(func() error {
-			prs, _, err := g.client.PullRequests.ListPullRequestsWithCommit(afterctx, g.config.Owner, g.config.Repo, sha, nil)
-			if err != nil {
-				return err
-			}
-			for _, pr := range prs {
-				if pr.MergedAt != nil {
-					mu.Lock()
-					listprs = append(listprs, pr)
-					mu.Unlock()
-				}
-			}
-			return nil
-		})
-	}
-	if err := eg.Wait(); err != nil {
-		return nil, err
-	}
+	// TODO: Need to check all sha's PRs?
+	//afterctx, afterCancel := context.WithTimeout(ctx, AsynchronousTimeout)
+	//defer afterCancel()
+	//eg, afterctx = errgroup.WithContext(afterctx)
+	//var mu sync.Mutex
+	//for _, sha := range needAPICommitSHAs {
+	//	eg.Go(func() error {
+	//		prs, _, err := g.client.PullRequests.ListPullRequestsWithCommit(afterctx, g.config.Owner, g.config.Repo, sha, nil)
+	//		if err != nil {
+	//			return err
+	//		}
+	//		for _, pr := range prs {
+	//			if pr.MergedAt != nil {
+	//				mu.Lock()
+	//				listprs = append(listprs, pr)
+	//				mu.Unlock()
+	//			}
+	//		}
+	//		return nil
+	//	})
+	//}
+	//if err := eg.Wait(); err != nil {
+	//	return nil, err
+	//}
 
 	sort.Slice(listprs, func(i, j int) bool {
 		return listprs[i].GetNumber() > listprs[j].GetNumber()

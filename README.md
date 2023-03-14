@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install go-pr-release
-        run: curl -s https://api.github.com/repos/tomtwinkle/go-pr-release/releases/latest | jq '.assets[] | select(.name | contains("linux_amd64")) | .browser_download_url' | xargs curl -L | tar -xz
+        run: curl -s -L https://github.com/tomtwinkle/go-pr-release/releases/latest/download/go-pr-release_linux_x86_64.tar.gz | tar -xvz
 
       - name: Run
         env:

@@ -12,7 +12,7 @@ require (
 	github.com/google/go-github/v45 v45.2.0
 	github.com/joho/godotenv v1.5.1
 	github.com/mkideal/cli v0.2.7
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.4
 	golang.org/x/oauth2 v0.11.0
 	golang.org/x/sync v0.3.0
 )

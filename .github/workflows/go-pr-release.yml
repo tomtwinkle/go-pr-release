@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3.5.3
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
 
       - name: Install go-pr-release
-        run: curl -s https://api.github.com/repos/tomtwinkle/go-pr-release/releases/latest | jq '.assets[] | select(.name | contains("linux_amd64")) | .browser_download_url' | xargs curl -L | tar -xz
+        run: curl -s -L https://github.com/tomtwinkle/go-pr-release/releases/latest/download/go-pr-release_linux_x86_64.tar.gz | tar -xvz
 
       - name: debug
         run: ls -la

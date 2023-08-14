@@ -32,7 +32,5 @@ jobs:
         # with:
         #   config-name: my-config.yml
         #   disable-autolabeler: true
-        with:
-          publish: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

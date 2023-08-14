@@ -9,15 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/storage/memory"
-
-	"golang.org/x/sync/errgroup"
-
-	"github.com/go-git/go-git/v5"
-
 	"github.com/google/go-github/v45/github"
 	"golang.org/x/oauth2"
+	"golang.org/x/sync/errgroup"
 )
 
 const AsynchronousTimeout = 60 * time.Second

@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"log/slog"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/google/go-github/v45/github"
 	"golang.org/x/oauth2"
@@ -24,7 +26,6 @@ var (
 )
 
 type Github interface {
-	Config() *RemoteConfig
 	CreateReleasePR(ctx context.Context, title, fromBranch, toBranch, body string) (*github.PullRequest, error)
 	GetReleasePR(ctx context.Context, fromBranch, toBranch string) (*github.PullRequest, error)
 	GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (PullRequests, error)
@@ -33,33 +34,54 @@ type Github interface {
 }
 
 type gh struct {
-	client *github.Client
-	remote *git.Remote
-	config *RemoteConfig
+	client     *github.Client
+	repository *git.Repository
+	remote     *git.Remote
+	config     *RemoteConfig
+
+	logger *slog.Logger
 }
 
 func New(ctx context.Context, token string, p RemoteConfigParam) (Github, error) {
-	cnf, remote, err := gitRemoteConfig(p)
+	cnf, repo, remote, err := gitRemoteConfig(p)
 	if err != nil {
 		return nil, err
 	}
+	logger := p.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &gh{
-		client: newClient(ctx, token),
-		remote: remote,
-		config: cnf,
+		client:     newClient(ctx, token),
+		repository: repo,
+		remote:     remote,
+		config:     cnf,
+		logger:     logger,
 	}, nil
 }
 
-func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) Github {
-	remote := git.NewRemote(memory.NewStorage(), &config.RemoteConfig{
-		Name: "origin",
-		URLs: []string{fmt.Sprintf("https://github.com/%s/%s", remoteConfig.Owner, remoteConfig.Repo)},
+func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) (Github, error) {
+	r, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{
+		URL: fmt.Sprintf("https://github.com/%s/%s", remoteConfig.Owner, remoteConfig.Repo),
 	})
-	return &gh{
-		client: newClient(ctx, token),
-		remote: remote,
-		config: &remoteConfig,
+	if err != nil {
+		return nil, err
 	}
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return nil, err
+	}
+	logger := remoteConfig.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &gh{
+		client:     newClient(ctx, token),
+		repository: r,
+		remote:     remote,
+		config:     &remoteConfig,
+		logger:     logger,
+	}, nil
 }
 
 func newClient(ctx context.Context, token string) *github.Client {
@@ -74,24 +96,26 @@ func newClient(ctx context.Context, token string) *github.Client {
 type RemoteConfigParam struct {
 	GitDirPath string
 	RemoteName string
+	Logger     *slog.Logger
 }
 
 type RemoteConfig struct {
-	Owner string
-	Repo  string
+	Owner  string
+	Repo   string
+	Logger *slog.Logger
 }
 
-func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, *git.Remote, error) {
+func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, *git.Repository, *git.Remote, error) {
 	r, err := git.PlainOpen(p.GitDirPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	remote, err := r.Remote(p.RemoteName)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(remote.Config().URLs) == 0 {
-		return nil, nil, errors.New("no set origin git urls")
+		return nil, nil, nil, errors.New("no set origin git urls")
 	}
 	url := remote.Config().URLs[0]
 	url = strings.TrimPrefix(url, "https://github.com/")
@@ -100,7 +124,7 @@ func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, *git.Remote, error) {
 	ss := strings.Split(url, "/")
 	owner := ss[0]
 	repo := ss[1]
-	return &RemoteConfig{owner, repo}, remote, nil
+	return &RemoteConfig{Owner: owner, Repo: repo, Logger: p.Logger}, r, remote, nil
 }
 
 type PullRequests []*github.PullRequest
@@ -122,61 +146,124 @@ func (prs PullRequests) SHAs() []string {
 	return shas
 }
 
-func (g *gh) Config() *RemoteConfig {
-	return g.config
+func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (PullRequests, error) {
+	toHash, err := g.resolveBranch(ctx, toBranch)
+	if err != nil {
+		return nil, err
+	}
+	fromHash, err := g.resolveBranch(ctx, fromBranch)
+	if err != nil {
+		return nil, err
+	}
+
+	prNums, err := g.fetchMergedPRNumsFromGit(ctx, *fromHash, *toHash)
+	if err != nil {
+		return nil, err
+	}
+	prs, err := g.fetchPRsFromGithub(ctx, prNums)
+	if err != nil {
+		return nil, err
+	}
+	return prs, nil
 }
 
-func (g *gh) BranchCompareCommits(ctx context.Context, fromBranch, toBranch string) ([]*github.RepositoryCommit, error) {
-	const (
-		MaxPages = 4   // 250 * 4 = 1000 commits
-		PerPage  = 250 // Github API Limit: 250
-	)
-	getcommits := make([]*github.RepositoryCommit, 0, MaxPages*PerPage)
-	for i := 0; i < MaxPages; i++ {
-		page := i
-		opts := &github.ListOptions{
-			Page:    page,
-			PerPage: PerPage,
-		}
-		commits, _, err := g.client.Repositories.CompareCommits(ctx, g.config.Owner, g.config.Repo, toBranch, fromBranch, opts)
-		if err != nil {
-			return nil, err
-		}
-		getcommits = append(getcommits, commits.Commits...)
-		if commits.TotalCommits != nil && *commits.TotalCommits == len(getcommits) {
-			break
+func (g *gh) resolveBranch(ctx context.Context, remoteBranch string) (*plumbing.Hash, error) {
+	revision := plumbing.Revision("refs/remotes/origin/" + remoteBranch)
+	hash, err := g.repository.ResolveRevision(revision)
+	if err != nil {
+		return nil, fmt.Errorf("resolve error [%s]: %w", remoteBranch, err)
+	}
+	g.logger.DebugContext(ctx, fmt.Sprintf("resolve branch=%s, hash=%s", remoteBranch, hash.String()))
+	return hash, nil
+}
+
+func (g *gh) fetchMergedPRNumsFromGit(ctx context.Context, fromHash, toHash plumbing.Hash) ([]int, error) {
+	if err := g.remote.FetchContext(ctx, &git.FetchOptions{
+		RemoteName: "origin",
+	}); err != nil {
+		if !errors.Is(err, git.NoErrAlreadyUpToDate) {
+			return nil, fmt.Errorf("git Remote Fetch error: %w", err)
 		}
 	}
-	return getcommits, nil
+
+	fromCommit, err := g.repository.CommitObject(fromHash)
+	if err != nil {
+		return nil, fmt.Errorf("github Git GetCommit fromHash error [%s]: %w", fromHash.String(), err)
+	}
+	toCommit, err := g.repository.CommitObject(toHash)
+	if err != nil {
+		return nil, fmt.Errorf("github Git GetCommit toHash error [%s]: %w", toHash.String(), err)
+	}
+	toCommitHashes := make(map[plumbing.Hash]struct{}, len(toCommit.ParentHashes))
+	for _, v := range toCommit.ParentHashes {
+		toCommitHashes[v] = struct{}{}
+	}
+
+	itr, err := g.repository.Log(&git.LogOptions{
+		From:  fromHash,
+		Order: git.LogOrderCommitterTime,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("git Repository Logs error [%s]: %w", fromHash, err)
+	}
+
+	var mergedFeatureHeadCommits = make(map[plumbing.Hash]*object.Commit)
+	if err := itr.ForEach(func(c *object.Commit) error {
+		if _, ok := toCommitHashes[c.Hash]; ok {
+			return storer.ErrStop
+		}
+		mergeCommits, err := fromCommit.MergeBase(c)
+		if err != nil {
+			return fmt.Errorf("git MergeBase error: %w", err)
+		}
+		for _, mc := range mergeCommits {
+			g.logger.DebugContext(ctx, fmt.Sprintf("git repo log hash=%s commit=%s", c.Hash.String(), c.Message))
+			mergedFeatureHeadCommits[mc.Hash] = mc
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("git Repository Logs Iterate error: %w", err)
+	}
+
+	refs, err := g.remote.List(&git.ListOptions{
+		// Returns all references, including peeled references.
+		PeelingOption: git.AppendPeeled,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("git Remote refs List error: %w", err)
+	}
+
+	var prNums = make([]int, 0, len(refs))
+	for _, ref := range refs {
+		if _, ok := mergedFeatureHeadCommits[ref.Hash()]; !ok {
+			continue
+		}
+		refName := ref.Name().String()
+		if RegRefPullRequest.MatchString(refName) {
+			prNum, err := strconv.Atoi(RegRefPullRequest.ReplaceAllString(refName, "$1"))
+			if err != nil {
+				return nil, err
+			}
+			prNums = append(prNums, prNum)
+		}
+	}
+	return prNums, nil
 }
 
-func (g *gh) ClosedPRLists(ctx context.Context) (PullRequests, error) {
-	const (
-		MaxPages = 2   // 100 * 2 = 200 PullRequests
-		PerPage  = 100 // Github API Limit: 100
+func (g *gh) fetchPRsFromGithub(ctx context.Context, prNums []int) (PullRequests, error) {
+	var (
+		eg       errgroup.Group
+		fetchPrs = make(PullRequests, len(prNums))
 	)
-	var mu sync.Mutex
-	eg, ctx := errgroup.WithContext(ctx)
-	getprs := make([]*github.PullRequest, 0, MaxPages*PerPage)
-	for i := 0; i < MaxPages; i++ {
-		page := i
+	for i, prNum := range prNums {
+		i := i
+		prNum := prNum
 		eg.Go(func() error {
-			opt := &github.PullRequestListOptions{
-				State:     "closed",
-				Sort:      "created",
-				Direction: "desc",
-				ListOptions: github.ListOptions{
-					Page:    page,
-					PerPage: PerPage,
-				},
-			}
-			prs, _, err := g.client.PullRequests.List(ctx, g.config.Owner, g.config.Repo, opt)
+			pr, _, err := g.client.PullRequests.Get(ctx, g.config.Owner, g.config.Repo, prNum)
 			if err != nil {
-				return err
+				return fmt.Errorf("github PullRequest Get error [%d]: %w", prNum, err)
 			}
-			mu.Lock()
-			getprs = append(getprs, prs...)
-			mu.Unlock()
+			fetchPrs[i] = pr
 			return nil
 		})
 	}
@@ -184,93 +271,16 @@ func (g *gh) ClosedPRLists(ctx context.Context) (PullRequests, error) {
 		return nil, err
 	}
 
-	return getprs, nil
-}
-
-func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (PullRequests, error) {
-	// Obtain a list of commit differences and pull requests that have already been closed
-	var (
-		commits []*github.RepositoryCommit
-		allprs  PullRequests
-	)
-	beforectx, beforeCancel := context.WithTimeout(ctx, AsynchronousTimeout)
-	defer beforeCancel()
-	eg, beforectx := errgroup.WithContext(beforectx)
-	eg.Go(func() error {
-		var err error
-		// Note: comparison limit 250 commits
-		commits, err = g.BranchCompareCommits(beforectx, fromBranch, toBranch)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	eg.Go(func() error {
-		var err error
-		allprs, err = g.ClosedPRLists(beforectx)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	if err := eg.Wait(); err != nil {
-		return nil, err
-	}
-
-	// commit hash is matched against the hash value in the PullRequests. If it cannot be obtained, get it from Github API
-	listprs := make([]*github.PullRequest, 0, len(allprs))
-	//needAPICommitSHAs := make([]string, 0)
-	for _, commit := range commits {
-		sha := commit.GetSHA()
-		if sha == "" {
+	prs := make(PullRequests, 0, len(prNums))
+	for _, pr := range fetchPrs {
+		if pr == nil {
 			continue
 		}
-		if pr, ok := allprs.FindHash(sha); ok {
-			listprs = append(listprs, pr)
-			continue
+		if pr.Merged != nil && *pr.Merged {
+			prs = append(prs, pr)
 		}
-		//needAPICommitSHAs = append(needAPICommitSHAs, sha)
 	}
-
-	// TODO: Need to check all sha's PRs?
-	//afterctx, afterCancel := context.WithTimeout(ctx, AsynchronousTimeout)
-	//defer afterCancel()
-	//eg, afterctx = errgroup.WithContext(afterctx)
-	//var mu sync.Mutex
-	//for _, sha := range needAPICommitSHAs {
-	//	eg.Go(func() error {
-	//		prs, _, err := g.client.PullRequests.ListPullRequestsWithCommit(afterctx, g.config.Owner, g.config.Repo, sha, nil)
-	//		if err != nil {
-	//			return err
-	//		}
-	//		for _, pr := range prs {
-	//			if pr.MergedAt != nil {
-	//				mu.Lock()
-	//				listprs = append(listprs, pr)
-	//				mu.Unlock()
-	//			}
-	//		}
-	//		return nil
-	//	})
-	//}
-	//if err := eg.Wait(); err != nil {
-	//	return nil, err
-	//}
-
-	sort.Slice(listprs, func(i, j int) bool {
-		return listprs[i].GetNumber() > listprs[j].GetNumber()
-	})
-
-	mergedPRs := make([]*github.PullRequest, 0, len(listprs))
-	uniq := make(map[int]struct{})
-	for _, v := range listprs {
-		if _, ok := uniq[v.GetNumber()]; ok {
-			continue
-		}
-		uniq[v.GetNumber()] = struct{}{}
-		mergedPRs = append(mergedPRs, v)
-	}
-	return mergedPRs, nil
+	return prs, nil
 }
 
 func (g *gh) GetReleasePR(ctx context.Context, fromBranch, toBranch string) (*github.PullRequest, error) {
@@ -285,7 +295,7 @@ func (g *gh) GetReleasePR(ctx context.Context, fromBranch, toBranch string) (*gi
 	}
 	prs, _, err := g.client.PullRequests.List(ctx, g.config.Owner, g.config.Repo, opt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("github PullRequest List error head=%s, base=%s: %w", opt.Head, toBranch, err)
 	}
 	for _, pr := range prs {
 		if pr.GetBase().GetRef() == toBranch && pr.GetHead().GetRef() == fromBranch && pr.MergedAt == nil {

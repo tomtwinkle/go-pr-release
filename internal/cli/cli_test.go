@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/bxcodec/faker/v3"
-
 	"github.com/stretchr/testify/assert"
 
 	"github.com/tomtwinkle/go-pr-release/internal/cli"

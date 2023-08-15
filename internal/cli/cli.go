@@ -4,20 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"reflect"
 	"strings"
-
-	"github.com/tomtwinkle/go-pr-release/internal/pkg/gh"
-
-	"github.com/tomtwinkle/go-pr-release/internal/markdown"
-
-	tren "github.com/go-playground/validator/v10/translations/en"
 
 	"github.com/go-playground/locales/en"
 	ut "github.com/go-playground/universal-translator"
 	"github.com/go-playground/validator/v10"
+	tren "github.com/go-playground/validator/v10/translations/en"
 	"github.com/mkideal/cli"
+
+	"github.com/tomtwinkle/go-pr-release/internal/markdown"
 	"github.com/tomtwinkle/go-pr-release/internal/pkg/env"
+	"github.com/tomtwinkle/go-pr-release/internal/pkg/gh"
 )
 
 const (
@@ -195,9 +195,18 @@ func transFunc(ut ut.Translator, fe validator.FieldError) string {
 
 func MakePR(arg *Args) error {
 	ctx := context.Background()
+
+	logLevel := slog.LevelInfo
+	if arg.Verbose {
+		logLevel = slog.LevelDebug
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
 	g, err := gh.New(ctx, arg.Token, gh.RemoteConfigParam{
 		GitDirPath: gitDir,
 		RemoteName: gitRemoteName,
+		Logger:     logger,
 	})
 	if err != nil {
 		return err

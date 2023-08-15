@@ -7,6 +7,7 @@ import (
 	"github.com/bxcodec/faker/v3"
 	"github.com/google/go-github/v45/github"
 	"github.com/stretchr/testify/assert"
+
 	"github.com/tomtwinkle/go-pr-release/internal/markdown"
 )
 

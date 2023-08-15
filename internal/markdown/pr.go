@@ -6,9 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/go-github/v45/github"
-
 	"github.com/Masterminds/sprig/v3"
+	"github.com/google/go-github/v45/github"
 )
 
 const defaultTmpl = `# Releases

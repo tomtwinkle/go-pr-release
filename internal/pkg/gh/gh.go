@@ -43,21 +43,11 @@ type gh struct {
 }
 
 func New(ctx context.Context, token string, p RemoteConfigParam) (Github, error) {
-	cnf, repo, remote, err := gitRemoteConfig(p)
+	cnf, err := gitRemoteConfig(p)
 	if err != nil {
 		return nil, err
 	}
-	logger := p.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-	return &gh{
-		client:     newClient(ctx, token),
-		repository: repo,
-		remote:     remote,
-		config:     cnf,
-		logger:     logger,
-	}, nil
+	return NewWithConfig(ctx, token, *cnf)
 }
 
 func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) (Github, error) {
@@ -105,17 +95,17 @@ type RemoteConfig struct {
 	Logger *slog.Logger
 }
 
-func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, *git.Repository, *git.Remote, error) {
+func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, error) {
 	r, err := git.PlainOpen(p.GitDirPath)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	remote, err := r.Remote(p.RemoteName)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	if len(remote.Config().URLs) == 0 {
-		return nil, nil, nil, errors.New("no set origin git urls")
+		return nil, errors.New("no set origin git urls")
 	}
 	url := remote.Config().URLs[0]
 	url = strings.TrimPrefix(url, "https://github.com/")
@@ -124,7 +114,7 @@ func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, *git.Repository, *git.
 	ss := strings.Split(url, "/")
 	owner := ss[0]
 	repo := ss[1]
-	return &RemoteConfig{Owner: owner, Repo: repo, Logger: p.Logger}, r, remote, nil
+	return &RemoteConfig{Owner: owner, Repo: repo, Logger: p.Logger}, nil
 }
 
 type PullRequests []*github.PullRequest

@@ -2,34 +2,24 @@ package gh_test
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"testing"
 
 	"github.com/joho/godotenv"
-
 	"github.com/stretchr/testify/assert"
+
 	"github.com/tomtwinkle/go-pr-release/internal/pkg/gh"
 )
-
-func TestGh_GitRemoteConfig(t *testing.T) {
-	t.Run("GitRemoteConfig", func(t *testing.T) {
-		ctx := context.Background()
-		g, err := gh.New(ctx, "dummy", gh.RemoteConfigParam{
-			GitDirPath: "../../../.git",
-			RemoteName: "origin",
-		})
-
-		assert.NoError(t, err)
-		assert.Equal(t, "tomtwinkle", g.Config().Owner)
-		assert.Equal(t, "go-pr-release", g.Config().Repo)
-	})
-}
 
 func TestGh_GetMergedPRs(t *testing.T) {
 	if _, ok := os.LookupEnv("CI"); ok {
 		t.SkipNow()
 	}
 	assert.NoError(t, godotenv.Load("../../../.env"))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	t.Run("GetMergedPRs", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
@@ -42,7 +32,8 @@ func TestGh_GetMergedPRs(t *testing.T) {
 		toBranch := "main"
 		ctx := context.Background()
 
-		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		assert.NoError(t, err)
 		prs, err := g.GetMergedPRs(ctx, fromBranch, toBranch)
 		assert.NoError(t, err)
 		wantIDs := []int{9, 6}
@@ -63,6 +54,9 @@ func TestGh_GetReleasePR(t *testing.T) {
 		t.SkipNow()
 	}
 	assert.NoError(t, godotenv.Load("../../../.env"))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	t.Run("Create PR from branch", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
@@ -73,7 +67,8 @@ func TestGh_GetReleasePR(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		assert.NoError(t, err)
 		pr, err := g.GetReleasePR(ctx, "develop", "main")
 		assert.NoError(t, err)
 		t.Logf("%+v", pr)
@@ -85,6 +80,9 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 		t.SkipNow()
 	}
 	assert.NoError(t, godotenv.Load("../../../.env"))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	t.Run("Create PR from branch", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
@@ -95,7 +93,8 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		assert.NoError(t, err)
 		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		assert.NoError(t, err)
 		t.Logf("%+v", pr)
@@ -110,7 +109,8 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		assert.NoError(t, err)
 		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		assert.NoError(t, err)
 		t.Logf("%+v", pr)
@@ -122,6 +122,9 @@ func TestGh_AssignReviews(t *testing.T) {
 		t.SkipNow()
 	}
 	assert.NoError(t, godotenv.Load("../../../.env"))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	t.Run("AssignReviews", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
@@ -132,7 +135,8 @@ func TestGh_AssignReviews(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		assert.NoError(t, err)
 		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		if !assert.NoError(t, err) {
 			return
@@ -148,6 +152,9 @@ func TestGh_Labeling(t *testing.T) {
 		t.SkipNow()
 	}
 	assert.NoError(t, godotenv.Load("../../../.env"))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	t.Run("Labeling", func(t *testing.T) {
 		token, ok := os.LookupEnv("GO_PR_RELEASE_TOKEN")
@@ -158,7 +165,8 @@ func TestGh_Labeling(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo})
+		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		assert.NoError(t, err)
 		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		if !assert.NoError(t, err) {
 			return

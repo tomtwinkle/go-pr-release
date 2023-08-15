@@ -203,11 +203,7 @@ func MakePR(arg *Args) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
-	g, err := gh.New(ctx, arg.Token, gh.RemoteConfigParam{
-		GitDirPath: gitDir,
-		RemoteName: gitRemoteName,
-		Logger:     logger,
-	})
+	g, err := gh.New(ctx, arg.Token, logger)
 	if err != nil {
 		return err
 	}

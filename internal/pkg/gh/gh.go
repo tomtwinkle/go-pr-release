@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -42,12 +43,27 @@ type gh struct {
 	logger *slog.Logger
 }
 
-func New(ctx context.Context, token string, p RemoteConfigParam) (Github, error) {
-	cnf, err := gitRemoteConfig(p)
+type RemoteConfig struct {
+	Owner  string
+	Repo   string
+	Logger *slog.Logger
+}
+
+type gitConfig struct {
+	Owner string
+	Repo  string
+}
+
+func New(ctx context.Context, token string, logger *slog.Logger) (Github, error) {
+	cnf, err := gitRemoteConfig(logger)
 	if err != nil {
 		return nil, err
 	}
-	return NewWithConfig(ctx, token, *cnf)
+	return NewWithConfig(ctx, token, RemoteConfig{
+		Owner:  cnf.Owner,
+		Repo:   cnf.Repo,
+		Logger: logger,
+	})
 }
 
 func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) (Github, error) {
@@ -74,33 +90,35 @@ func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig)
 	}, nil
 }
 
-func newClient(ctx context.Context, token string) *github.Client {
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: token},
+func gitRemoteConfig(logger *slog.Logger) (*gitConfig, error) {
+	cnf, err := gitRemoteConfigDir()
+	if err != nil {
+		logger.Info(err.Error())
+	} else {
+		return cnf, nil
+	}
+	cnf, err = gitRemoteConfigCIEnv()
+	if err != nil {
+		logger.Info(err.Error())
+	} else {
+		return cnf, nil
+	}
+	return nil, errors.New("doesn't detect github repository")
+}
+
+func gitRemoteConfigDir() (*gitConfig, error) {
+	const (
+		gitDir     = ".git"
+		remoteName = "origin"
 	)
-	tc := oauth2.NewClient(ctx, ts)
-
-	return github.NewClient(tc)
-}
-
-type RemoteConfigParam struct {
-	GitDirPath string
-	RemoteName string
-	Logger     *slog.Logger
-}
-
-type RemoteConfig struct {
-	Owner  string
-	Repo   string
-	Logger *slog.Logger
-}
-
-func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, error) {
-	r, err := git.PlainOpen(p.GitDirPath)
+	if f, err := os.Stat(gitDir); os.IsNotExist(err) || !f.IsDir() {
+		return nil, fmt.Errorf("not found %s", gitDir)
+	}
+	r, err := git.PlainOpen(gitDir)
 	if err != nil {
 		return nil, err
 	}
-	remote, err := r.Remote(p.RemoteName)
+	remote, err := r.Remote(remoteName)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +132,35 @@ func gitRemoteConfig(p RemoteConfigParam) (*RemoteConfig, error) {
 	ss := strings.Split(url, "/")
 	owner := ss[0]
 	repo := ss[1]
-	return &RemoteConfig{Owner: owner, Repo: repo, Logger: p.Logger}, nil
+	return &gitConfig{Owner: owner, Repo: repo}, nil
+}
+
+func gitRemoteConfigCIEnv() (*gitConfig, error) {
+	if _, ok := os.LookupEnv("CI"); !ok {
+		return nil, errors.New("not working CI")
+	}
+
+	if repo, ok := os.LookupEnv("GITHUB_REPOSITORY"); ok {
+		ss := strings.Split(repo, "/")
+		return &gitConfig{Owner: ss[0], Repo: ss[1]}, nil
+	}
+
+	if repo, ok := os.LookupEnv("CIRCLE_PROJECT_REPONAME"); ok {
+		if owner, ok := os.LookupEnv("CIRCLE_PROJECT_USERNAME"); ok {
+			return &gitConfig{Owner: owner, Repo: repo}, nil
+		}
+	}
+
+	return nil, errors.New("not found CI env")
+}
+
+func newClient(ctx context.Context, token string) *github.Client {
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: token},
+	)
+	tc := oauth2.NewClient(ctx, ts)
+
+	return github.NewClient(tc)
 }
 
 type PullRequests []*github.PullRequest

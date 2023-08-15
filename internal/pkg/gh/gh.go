@@ -147,6 +147,13 @@ func (prs PullRequests) SHAs() []string {
 }
 
 func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (PullRequests, error) {
+	if err := g.remote.FetchContext(ctx, &git.FetchOptions{
+		RemoteName: "origin",
+	}); err != nil {
+		if !errors.Is(err, git.NoErrAlreadyUpToDate) {
+			return nil, fmt.Errorf("git Remote Fetch error: %w", err)
+		}
+	}
 	toHash, err := g.resolveBranch(ctx, toBranch)
 	if err != nil {
 		return nil, err
@@ -178,14 +185,6 @@ func (g *gh) resolveBranch(ctx context.Context, remoteBranch string) (*plumbing.
 }
 
 func (g *gh) fetchMergedPRNumsFromGit(ctx context.Context, fromHash, toHash plumbing.Hash) ([]int, error) {
-	if err := g.remote.FetchContext(ctx, &git.FetchOptions{
-		RemoteName: "origin",
-	}); err != nil {
-		if !errors.Is(err, git.NoErrAlreadyUpToDate) {
-			return nil, fmt.Errorf("git Remote Fetch error: %w", err)
-		}
-	}
-
 	fromCommit, err := g.repository.CommitObject(fromHash)
 	if err != nil {
 		return nil, fmt.Errorf("github Git GetCommit fromHash error [%s]: %w", fromHash.String(), err)

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
+
 	"github.com/go-git/go-billy/v5/memfs"
 
 	"github.com/go-git/go-git/v5"
@@ -69,13 +71,11 @@ func New(ctx context.Context, token string, logger *slog.Logger) (Github, error)
 }
 
 func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) (Github, error) {
-	f := memfs.New()
-	options := &git.CloneOptions{
-		URL: getURL(token, remoteConfig),
-	}
-	if err := options.Validate(); err != nil {
+	options, err := getOptions(token, remoteConfig)
+	if err != nil {
 		return nil, err
 	}
+	f := memfs.New()
 	r, err := git.CloneContext(ctx, memory.NewStorage(), f, options)
 	if err != nil {
 		return nil, err
@@ -97,11 +97,21 @@ func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig)
 	}, nil
 }
 
-func getURL(token string, remoteConfig RemoteConfig) string {
-	if token == "" {
-		return fmt.Sprintf("https://github.com/%s/%s", remoteConfig.Owner, remoteConfig.Repo)
+func getOptions(token string, remoteConfig RemoteConfig) (*git.CloneOptions, error) {
+	options := &git.CloneOptions{
+		// The intended use of a GitHub personal access token is in replace of your password
+		// because access tokens can easily be revoked.
+		// https://help.github.com/articles/creating-a-personal-access-token-for-the-command-line/
+		Auth: &http.BasicAuth{
+			Username: "",
+			Password: token,
+		},
+		URL: fmt.Sprintf("https://github.com/%s/%s", remoteConfig.Owner, remoteConfig.Repo),
 	}
-	return fmt.Sprintf("https://%s:x-oauth-basic@github.com/%s/%s", token, remoteConfig.Owner, remoteConfig.Repo)
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+	return options, nil
 }
 
 func gitRemoteConfig(logger *slog.Logger) (*gitConfig, error) {

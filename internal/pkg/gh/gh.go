@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-billy/v5/memfs"
+
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 
 	"github.com/go-git/go-git/v5"
@@ -69,11 +71,13 @@ func New(ctx context.Context, token string, logger *slog.Logger) (Github, error)
 }
 
 func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) (Github, error) {
-	r, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{
+	f := memfs.New()
+	r, err := git.CloneContext(ctx, memory.NewStorage(), f, &git.CloneOptions{
+		Progress: os.Stdout,
 		Auth: &http.TokenAuth{
 			Token: token,
 		},
-		URL: fmt.Sprintf("https://github.com/%s/%s", remoteConfig.Owner, remoteConfig.Repo),
+		URL: fmt.Sprintf("https://%s:x-oauth-basic@github.com/%s/%s", token, remoteConfig.Owner, remoteConfig.Repo),
 	})
 	if err != nil {
 		return nil, err

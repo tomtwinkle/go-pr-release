@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -68,6 +70,9 @@ func New(ctx context.Context, token string, logger *slog.Logger) (Github, error)
 
 func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) (Github, error) {
 	r, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{
+		Auth: &http.TokenAuth{
+			Token: token,
+		},
 		URL: fmt.Sprintf("https://github.com/%s/%s", remoteConfig.Owner, remoteConfig.Repo),
 	})
 	if err != nil {

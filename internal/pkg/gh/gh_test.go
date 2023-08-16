@@ -32,7 +32,7 @@ func TestGh_GetMergedPRs(t *testing.T) {
 		toBranch := "main"
 		ctx := context.Background()
 
-		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		g, err := gh.NewWithConfig(ctx, token, logger, gh.RemoteConfig{Owner: owner, Repo: repo})
 		assert.NoError(t, err)
 		prs, err := g.GetMergedPRs(ctx, fromBranch, toBranch)
 		assert.NoError(t, err)
@@ -67,7 +67,7 @@ func TestGh_GetReleasePR(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		g, err := gh.NewWithConfig(ctx, token, logger, gh.RemoteConfig{Owner: owner, Repo: repo})
 		assert.NoError(t, err)
 		pr, err := g.GetReleasePR(ctx, "develop", "main")
 		assert.NoError(t, err)
@@ -93,7 +93,7 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		g, err := gh.NewWithConfig(ctx, token, logger, gh.RemoteConfig{Owner: owner, Repo: repo})
 		assert.NoError(t, err)
 		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		assert.NoError(t, err)
@@ -109,7 +109,7 @@ func TestGh_CreatePRFromBranch(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		g, err := gh.NewWithConfig(ctx, token, logger, gh.RemoteConfig{Owner: owner, Repo: repo})
 		assert.NoError(t, err)
 		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		assert.NoError(t, err)
@@ -135,7 +135,7 @@ func TestGh_AssignReviews(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		g, err := gh.NewWithConfig(ctx, token, logger, gh.RemoteConfig{Owner: owner, Repo: repo})
 		assert.NoError(t, err)
 		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		if !assert.NoError(t, err) {
@@ -165,7 +165,7 @@ func TestGh_Labeling(t *testing.T) {
 		repo := "go-pr-release-test"
 		ctx := context.Background()
 
-		g, err := gh.NewWithConfig(ctx, token, gh.RemoteConfig{Owner: owner, Repo: repo, Logger: logger})
+		g, err := gh.NewWithConfig(ctx, token, logger, gh.RemoteConfig{Owner: owner, Repo: repo})
 		assert.NoError(t, err)
 		pr, err := g.CreateReleasePR(ctx, "Merge to main from develop", "develop", "main", "test")
 		if !assert.NoError(t, err) {

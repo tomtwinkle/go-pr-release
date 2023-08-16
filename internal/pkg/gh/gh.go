@@ -10,10 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
-
-	"github.com/go-git/go-billy/v5/memfs"
-
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -25,6 +21,11 @@ import (
 )
 
 const AsynchronousTimeout = 60 * time.Second
+
+const (
+	DefaultRemoteName = "origin"
+	DefaultGitDir     = ".git"
+)
 
 var (
 	ErrBranchNotFound = errors.New("branch not found")
@@ -48,9 +49,8 @@ type gh struct {
 }
 
 type RemoteConfig struct {
-	Owner  string
-	Repo   string
-	Logger *slog.Logger
+	Owner string
+	Repo  string
 }
 
 type gitConfig struct {
@@ -59,32 +59,35 @@ type gitConfig struct {
 }
 
 func New(ctx context.Context, token string, logger *slog.Logger) (Github, error) {
-	cnf, err := gitRemoteConfig(logger)
+	cnf, r, remote, err := gitRemoteConfig()
 	if err != nil {
 		return nil, err
 	}
-	return NewWithConfig(ctx, token, RemoteConfig{
-		Owner:  cnf.Owner,
-		Repo:   cnf.Repo,
-		Logger: logger,
-	})
+	return &gh{
+		client:     newClient(ctx, token),
+		repository: r,
+		remote:     remote,
+		config: &RemoteConfig{
+			Owner: cnf.Owner,
+			Repo:  cnf.Repo,
+		},
+		logger: logger,
+	}, nil
 }
 
-func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) (Github, error) {
+func NewWithConfig(ctx context.Context, token string, logger *slog.Logger, remoteConfig RemoteConfig) (Github, error) {
 	options, err := getOptions(token, remoteConfig)
 	if err != nil {
 		return nil, err
 	}
-	f := memfs.New()
-	r, err := git.CloneContext(ctx, memory.NewStorage(), f, options)
+	r, err := git.CloneContext(ctx, memory.NewStorage(), nil, options)
 	if err != nil {
 		return nil, err
 	}
-	remote, err := r.Remote("origin")
+	remote, err := r.Remote(DefaultRemoteName)
 	if err != nil {
 		return nil, err
 	}
-	logger := remoteConfig.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -99,14 +102,8 @@ func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig)
 
 func getOptions(token string, remoteConfig RemoteConfig) (*git.CloneOptions, error) {
 	options := &git.CloneOptions{
-		// The intended use of a GitHub personal access token is in replace of your password
-		// because access tokens can easily be revoked.
-		// https://help.github.com/articles/creating-a-personal-access-token-for-the-command-line/
-		Auth: &http.BasicAuth{
-			Username: "",
-			Password: token,
-		},
-		URL: fmt.Sprintf("https://github.com/%s/%s", remoteConfig.Owner, remoteConfig.Repo),
+		URL:        fmt.Sprintf("https://%s@github.com/%s/%s", token, remoteConfig.Owner, remoteConfig.Repo),
+		RemoteName: DefaultRemoteName,
 	}
 	if err := options.Validate(); err != nil {
 		return nil, err
@@ -114,40 +111,20 @@ func getOptions(token string, remoteConfig RemoteConfig) (*git.CloneOptions, err
 	return options, nil
 }
 
-func gitRemoteConfig(logger *slog.Logger) (*gitConfig, error) {
-	cnf, err := gitRemoteConfigDir()
-	if err != nil {
-		logger.Info(err.Error())
-	} else {
-		return cnf, nil
+func gitRemoteConfig() (*gitConfig, *git.Repository, *git.Remote, error) {
+	if f, err := os.Stat(DefaultGitDir); os.IsNotExist(err) || !f.IsDir() {
+		return nil, nil, nil, fmt.Errorf("not found %s", DefaultGitDir)
 	}
-	cnf, err = gitRemoteConfigCIEnv()
+	r, err := git.PlainOpen(DefaultGitDir)
 	if err != nil {
-		logger.Info(err.Error())
-	} else {
-		return cnf, nil
+		return nil, nil, nil, err
 	}
-	return nil, errors.New("doesn't detect github repository")
-}
-
-func gitRemoteConfigDir() (*gitConfig, error) {
-	const (
-		gitDir     = ".git"
-		remoteName = "origin"
-	)
-	if f, err := os.Stat(gitDir); os.IsNotExist(err) || !f.IsDir() {
-		return nil, fmt.Errorf("not found %s", gitDir)
-	}
-	r, err := git.PlainOpen(gitDir)
+	remote, err := r.Remote(DefaultRemoteName)
 	if err != nil {
-		return nil, err
-	}
-	remote, err := r.Remote(remoteName)
-	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	if len(remote.Config().URLs) == 0 {
-		return nil, errors.New("no set origin git urls")
+		return nil, nil, nil, errors.New("no set origin git urls")
 	}
 	url := remote.Config().URLs[0]
 	url = strings.TrimPrefix(url, "https://github.com/")
@@ -156,26 +133,7 @@ func gitRemoteConfigDir() (*gitConfig, error) {
 	ss := strings.Split(url, "/")
 	owner := ss[0]
 	repo := ss[1]
-	return &gitConfig{Owner: owner, Repo: repo}, nil
-}
-
-func gitRemoteConfigCIEnv() (*gitConfig, error) {
-	if _, ok := os.LookupEnv("CI"); !ok {
-		return nil, errors.New("not working CI")
-	}
-
-	if repo, ok := os.LookupEnv("GITHUB_REPOSITORY"); ok {
-		ss := strings.Split(repo, "/")
-		return &gitConfig{Owner: ss[0], Repo: ss[1]}, nil
-	}
-
-	if repo, ok := os.LookupEnv("CIRCLE_PROJECT_REPONAME"); ok {
-		if owner, ok := os.LookupEnv("CIRCLE_PROJECT_USERNAME"); ok {
-			return &gitConfig{Owner: owner, Repo: repo}, nil
-		}
-	}
-
-	return nil, errors.New("not found CI env")
+	return &gitConfig{Owner: owner, Repo: repo}, r, remote, nil
 }
 
 func newClient(ctx context.Context, token string) *github.Client {
@@ -208,7 +166,7 @@ func (prs PullRequests) SHAs() []string {
 
 func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (PullRequests, error) {
 	if err := g.remote.FetchContext(ctx, &git.FetchOptions{
-		RemoteName: "origin",
+		RemoteName: DefaultRemoteName,
 	}); err != nil {
 		if !errors.Is(err, git.NoErrAlreadyUpToDate) {
 			return nil, fmt.Errorf("git Remote Fetch error: %w", err)
@@ -235,7 +193,7 @@ func (g *gh) GetMergedPRs(ctx context.Context, fromBranch, toBranch string) (Pul
 }
 
 func (g *gh) resolveBranch(ctx context.Context, remoteBranch string) (*plumbing.Hash, error) {
-	revision := plumbing.Revision("refs/remotes/origin/" + remoteBranch)
+	revision := plumbing.Revision(fmt.Sprintf("refs/remotes/%s/%s", DefaultRemoteName, remoteBranch))
 	hash, err := g.repository.ResolveRevision(revision)
 	if err != nil {
 		return nil, fmt.Errorf("resolve error [%s]: %w", remoteBranch, err)
@@ -346,7 +304,7 @@ func (g *gh) GetReleasePR(ctx context.Context, fromBranch, toBranch string) (*gi
 	var existsPR *github.PullRequest
 	opt := &github.PullRequestListOptions{
 		State:       "open",
-		Head:        fmt.Sprintf("origin/%s", fromBranch),
+		Head:        fmt.Sprintf("%s/%s", DefaultRemoteName, fromBranch),
 		Base:        toBranch,
 		Sort:        "created",
 		Direction:   "desc",

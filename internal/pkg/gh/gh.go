@@ -12,8 +12,6 @@ import (
 
 	"github.com/go-git/go-billy/v5/memfs"
 
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
-
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -72,13 +70,13 @@ func New(ctx context.Context, token string, logger *slog.Logger) (Github, error)
 
 func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig) (Github, error) {
 	f := memfs.New()
-	r, err := git.CloneContext(ctx, memory.NewStorage(), f, &git.CloneOptions{
-		Progress: os.Stdout,
-		Auth: &http.TokenAuth{
-			Token: token,
-		},
-		URL: fmt.Sprintf("https://%s:x-oauth-basic@github.com/%s/%s", token, remoteConfig.Owner, remoteConfig.Repo),
-	})
+	options := &git.CloneOptions{
+		URL: getURL(token, remoteConfig),
+	}
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+	r, err := git.CloneContext(ctx, memory.NewStorage(), f, options)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +95,13 @@ func NewWithConfig(ctx context.Context, token string, remoteConfig RemoteConfig)
 		config:     &remoteConfig,
 		logger:     logger,
 	}, nil
+}
+
+func getURL(token string, remoteConfig RemoteConfig) string {
+	if token == "" {
+		return fmt.Sprintf("https://github.com/%s/%s", remoteConfig.Owner, remoteConfig.Repo)
+	}
+	return fmt.Sprintf("https://%s:x-oauth-basic@github.com/%s/%s", token, remoteConfig.Owner, remoteConfig.Repo)
 }
 
 func gitRemoteConfig(logger *slog.Logger) (*gitConfig, error) {

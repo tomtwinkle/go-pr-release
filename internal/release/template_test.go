@@ -101,11 +101,11 @@ func TestMergeBodiesPreservesChecklistState(t *testing.T) {
 			newBody: `- [ ] #3 Provides a creating release pull-request object for template @hakobe
 - [ ] #4 use user who create PR if there is no assignee @hakobe
 - [ ] #6 Support two factor auth @ninjinkun
-- [ ] #30 Extract logic from bin/git-pr-release @banyan`,
+- [ ] #30 Extract logic from bin/go-pr-release @banyan`,
 			want: `- [x] #3 Provides a creating release pull-request object for template @hakobe
 - [ ] #4 use user who create PR if there is no assignee @hakobe
 - [ ] #6 Support two factor auth @ninjinkun
-- [ ] #30 Extract logic from bin/git-pr-release @banyan`,
+- [ ] #30 Extract logic from bin/go-pr-release @banyan`,
 		},
 	}
 

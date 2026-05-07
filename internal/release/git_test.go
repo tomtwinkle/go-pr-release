@@ -17,23 +17,23 @@ func TestParseRemoteURL(t *testing.T) {
 	}{
 		{
 			name:   "github https",
-			rawURL: "https://github.com/motemen/git-pr-release",
-			want:   Repository{Scheme: "https", Owner: "motemen", Name: "git-pr-release"},
+			rawURL: "https://github.com/octo/release-tool",
+			want:   Repository{Scheme: "https", Owner: "octo", Name: "release-tool"},
 		},
 		{
 			name:   "github ssh",
-			rawURL: "git@github.com:motemen/git-pr-release.git",
-			want:   Repository{Scheme: "https", Owner: "motemen", Name: "git-pr-release"},
+			rawURL: "git@github.com:octo/release-tool.git",
+			want:   Repository{Scheme: "https", Owner: "octo", Name: "release-tool"},
 		},
 		{
 			name:   "enterprise http",
-			rawURL: "http://ghe.example.com/motemen/git-pr-release",
-			want:   Repository{Host: "ghe.example.com", Scheme: "http", Owner: "motemen", Name: "git-pr-release"},
+			rawURL: "http://ghe.example.com/octo/release-tool",
+			want:   Repository{Host: "ghe.example.com", Scheme: "http", Owner: "octo", Name: "release-tool"},
 		},
 		{
 			name:   "enterprise ssh",
-			rawURL: "ssh://git@ghe.example.com/motemen/git-pr-release.git",
-			want:   Repository{Host: "ghe.example.com", Scheme: "https", Owner: "motemen", Name: "git-pr-release"},
+			rawURL: "ssh://git@ghe.example.com/octo/release-tool.git",
+			want:   Repository{Host: "ghe.example.com", Scheme: "https", Owner: "octo", Name: "release-tool"},
 		},
 	}
 

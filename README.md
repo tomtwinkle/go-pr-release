@@ -1,28 +1,83 @@
 # go-pr-release
-CLI for creating PullRequest for release in Github Action.
-it was respected by [git-pr-release](https://github.com/x-motemen/git-pr-release) and rewritten in Golang.
-since it runs in one binary, it is expected to run quickly on CI.
 
-![image](https://user-images.githubusercontent.com/47764757/179726677-2d5ee674-6f7a-4d3c-9c18-c7a979a8f25b.png)
+`x-motemen/git-pr-release` の主要フローを Go で書き直した CLI です。`git-pr-release` 互換の設定系を優先しつつ、既存の `go-pr-release` 向け環境変数も後方互換で受け付けます。
+
+## Compatibility
+
+- merge commit ベースの PR 収集
+- `--squashed` による squash merge PR 収集
+- 既存 release PR の再利用と checklist 状態の引き継ぎ
+- `--no-fetch`, `--dry-run`, `--json`, `--overwrite-description`
+- `pr-release.*` git config / `.git-pr-release`
+- GitHub Enterprise remote の API endpoint 解決
+- `--assign-pr-author`, `--request-pr-author-review`, `--mention author`
 
 ## Configuration
-The git configuration is read from `.git/config`.
-It works directly under the directory from which you `git clone`.
 
-| Environment Variables | CLI Option | Description |
+優先順位は **CLI option > 環境変数 > `.git-pr-release` / git config > default** です。
+
+### Environment variables
+
+| Primary | Legacy alias | Description |
 |---|---|---|
-| GO_PR_RELEASE_TOKEN     | --token                  | Required `secrets.GITHUB_TOKEN` or a personal token with repo privileges |
-| GO_PR_RELEASE_RELEASE   | --release-branch, --to   | Required. Release Branch: Destination to be merged |
-| GO_PR_RELEASE_DEVELOP   | --develop-branch, --from | Required. Develop Branch: Merge source |
-| GO_PR_RELEASE_LABELS    | --label, -l              | Optional. PullRequest labels. Multiple labels can be specified, separated by `commas` |
-| GO_PR_RELEASE_REVIEWERS | --reviewer, -r           | Optional. PullRequest reviewers. Multiple reviewers can be specified, separated by `commas` |
-| GO_PR_RELEASE_TITLE     | --title                  | Optional. specify the title of the pull request |
-| GO_PR_RELEASE_TEMPLATE  | --template, -t           | Optional. Specify a template file that can be described in `go template` |
-| GO_PR_RELEASE_DRY_RUN   | --dry-run, -n            | Optional. if true, display only the results to be created without creating PullRequest |
-|                         | --verbose                | Optional. Detailed logs will be output. Do not specify except for verification |
-|                         | --version, -v            | Optional. Output CLI version information |
+| `GIT_PR_RELEASE_TOKEN` | `GO_PR_RELEASE_TOKEN` | Required. GitHub token |
+| `GIT_PR_RELEASE_BRANCH_PRODUCTION` | `GO_PR_RELEASE_RELEASE` | Production branch. Default: `master` |
+| `GIT_PR_RELEASE_BRANCH_STAGING` | `GO_PR_RELEASE_DEVELOP` | Staging branch. Default: `staging` |
+| `GIT_PR_RELEASE_TEMPLATE` | `GO_PR_RELEASE_TEMPLATE` | Go template path |
+| `GIT_PR_RELEASE_LABELS` | `GO_PR_RELEASE_LABELS` | Comma-separated labels |
+| `GIT_PR_RELEASE_REVIEWERS` | `GO_PR_RELEASE_REVIEWERS` | Comma-separated extra reviewers |
+| `GIT_PR_RELEASE_TITLE` | `GO_PR_RELEASE_TITLE` | Explicit release PR title |
+| `GIT_PR_RELEASE_DRY_RUN` | `GO_PR_RELEASE_DRY_RUN` | Dry-run toggle |
+| `GIT_PR_RELEASE_MENTION` | - | `author` を指定すると author mention を使う |
+| `GIT_PR_RELEASE_ASSIGN_PR_AUTHOR` | - | `true` / `false` |
+| `GIT_PR_RELEASE_REQUEST_PR_AUTHOR_REVIEW` | - | `true` / `false` |
+| `GIT_PR_RELEASE_SSL_NO_VERIFY` | - | GitHub Enterprise で証明書検証を無効化 |
 
-### Installation in Github Action
+### CLI options
+
+| Option | Description |
+|---|---|
+| `--token` | GitHub token |
+| `--production-branch`, `--release-branch`, `--to` | Production branch |
+| `--staging-branch`, `--develop-branch`, `--from` | Staging branch |
+| `--template`, `-t` | Template path |
+| `--label`, `-l` | Labels |
+| `--reviewer`, `-r` | Extra reviewers |
+| `--title` | Release PR title override |
+| `--mention` | Mention strategy (`author`) |
+| `--assign-pr-author` | Assign merged PR authors/assignees |
+| `--request-pr-author-review` | Request review from merged PR authors/assignees |
+| `--dry-run`, `-n` | Do not create/update PR |
+| `--json` | Print release payload as JSON |
+| `--no-fetch` | Skip `git remote update origin` |
+| `--squashed` | Include squash merged PRs |
+| `--overwrite-description` | Do not merge checklist state from existing body |
+| `--verbose` | Print resolved runtime configuration |
+| `--version`, `-v` | Print version |
+
+### git config keys
+
+`.git-pr-release` では `pr-release.*` をそのまま指定できます。
+
+```ini
+[pr-release]
+token = ghp_xxx
+branch.production = main
+branch.staging = develop
+template = .github/template.tmpl
+labels = release,qa
+mention = author
+assign-pr-author = true
+request-pr-author-review = true
+```
+
+GitHub Enterprise の場合は host-aware な git config も使えます。
+
+```bash
+git config pr-release.ghe.example.com.branch.staging develop
+```
+
+## GitHub Actions
 
 ```yaml
 name: go-pr-release
@@ -34,59 +89,73 @@ on:
 
 jobs:
   go-pr-release:
-    name: go-pr-release
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Install go-pr-release
         run: curl -s -L https://github.com/tomtwinkle/go-pr-release/releases/latest/download/go-pr-release_linux_x86_64.tar.gz | tar -xvz
 
       - name: Run
         env:
-          GO_PR_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Required
-          GO_PR_RELEASE_RELEASE: main                      # Required. Release Branch: Destination to be merged
-          GO_PR_RELEASE_DEVELOP: develop                   # Required. Develop Branch: Merge source
-          GO_PR_RELEASE_LABELS: release                    # Optional. PullRequest labels. Multiple labels can be specified, separated by `commas`
-          GO_PR_RELEASE_TITLE: ""                          # Optional. specify the title of the pull request
-          GO_PR_RELEASE_TEMPLATE: ".github/template.tmpl"  # Optional. Specify a template file that can be described in `go template`
-          GO_PR_RELEASE_REVIEWERS: tomtwinkle              # Optional. PullRequest reviewers. Multiple reviewers can be specified, separated by `commas`
-          GO_PR_RELEASE_DRY_RUN: false                     # Optional. if true, display only the results to be created without creating PullRequest
-        run: ./go-pr-release
+          GIT_PR_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_PR_RELEASE_BRANCH_PRODUCTION: main
+          GIT_PR_RELEASE_BRANCH_STAGING: develop
+          GIT_PR_RELEASE_LABELS: release
+          GIT_PR_RELEASE_TEMPLATE: .github/template.tmpl
+          GIT_PR_RELEASE_ASSIGN_PR_AUTHOR: true
+          GIT_PR_RELEASE_REQUEST_PR_AUTHOR_REVIEW: true
+        run: ./go-pr-release --squashed
 ```
 
+## Template
 
-### Template
+テンプレートは **1 行目が title、2 行目以降が body** です。Go template と sprig functions を使えます。
 
-A `go template` file can be specified for template.
-Custom [sprig functions](https://github.com/Masterminds/sprig) can be used for `go template`.
-
-The following structs are available as go template parameters.
+利用できる代表的な値:
 
 ```go
-type TemplateParam struct {
-	PullRequests []TemplateParamPullRequest
+type TemplateData struct {
+	ReleasePullRequest PullRequest
+	TargetPullRequest  PullRequest
+	MergedPullRequests []PullRequest
+	PullRequests       []PullRequest
+	ChangedFiles       []ChangedFile
 }
 
-type TemplateParamPullRequest struct {
+type PullRequest struct {
 	Number         int
 	Title          string
 	MergedAt       time.Time
 	MergeCommitSHA string
-	User           TemplateParamUser
+	User           User
 	URL            string
 }
 
-type TemplateParamUser struct {
+type User struct {
 	LoginName string
 	URL       string
 	Avatar    string
 }
 ```
 
-### Example
+`PullRequests` のほかに、`pull_requests` / `merged_pull_requests` / `release_pull_request` / `target_pull_request` / `changed_files` も使えます。
 
-- [Example Github Action Workflow](https://github.com/tomtwinkle/go-pr-release-test/tree/develop/.github)
-- [Example PullRequest](https://github.com/tomtwinkle/go-pr-release-test/pull/16)
+サンプルテンプレート:
+
+```gotemplate
+Release {{ now | date "2006-01-02" }}
+
+# Releases
+{{- range .PullRequests }}
+{{ printf "- [ ] [%s] #%d @%s" (.MergedAt.Format "2006-01-02") .Number .User.LoginName }}
+{{- end }}
+```
+
+## Exit status
+
+- `0`: success
+- `1`: release 対象 PR がない、または実行時エラー

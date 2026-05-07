@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRESTGitHubClientGetPullRequestsPaginatesBeyondOneHundredPullRequests(t *testing.T) {
@@ -60,6 +61,87 @@ func TestRESTGitHubClientGetPullRequestsAvoidsOneRequestPerPullRequestBeyondOneT
 	}
 	if *detailRequests != 0 {
 		t.Fatalf("got %d detail requests, want 0", *detailRequests)
+	}
+}
+
+func TestRESTGitHubClientSearchPullRequestNumbersPaginatesBeyondOneHundredResults(t *testing.T) {
+	t.Parallel()
+
+	searchRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/search/issues" {
+			http.NotFound(w, r)
+			return
+		}
+
+		searchRequests++
+		if got := r.URL.Query().Get("per_page"); got != "100" {
+			http.Error(w, "unexpected per_page", http.StatusBadRequest)
+			return
+		}
+
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		switch page {
+		case 1:
+			_ = json.NewEncoder(w).Encode(searchIssuesResponse{Items: makeSearchItems(1, 100)})
+		case 2:
+			_ = json.NewEncoder(w).Encode(searchIssuesResponse{Items: makeSearchItems(101, 125)})
+		default:
+			_ = json.NewEncoder(w).Encode(searchIssuesResponse{})
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestGitHubClient(server)
+
+	numbers, err := client.SearchPullRequestNumbers(context.Background(), "repo:octo/example is:pr is:closed abcdef0")
+	if err != nil {
+		t.Fatalf("search pull request numbers: %v", err)
+	}
+
+	if got, want := numbers, sequence(1, 125); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got[:5], want[:5])
+	}
+	if searchRequests != 2 {
+		t.Fatalf("got %d requests, want 2", searchRequests)
+	}
+}
+
+func TestRESTGitHubClientSearchPullRequestNumbersRetriesOnRateLimit(t *testing.T) {
+	t.Parallel()
+
+	searchRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/search/issues" {
+			http.NotFound(w, r)
+			return
+		}
+
+		searchRequests++
+		if searchRequests == 1 {
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "secondary rate limit", http.StatusForbidden)
+			return
+		}
+
+		_ = json.NewEncoder(w).Encode(searchIssuesResponse{Items: makeSearchItems(1, 2)})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestGitHubClient(server)
+	client.sleepFn = func(context.Context, time.Duration) error { return nil }
+
+	numbers, err := client.SearchPullRequestNumbers(context.Background(), "repo:octo/example is:pr is:closed abcdef0")
+	if err != nil {
+		t.Fatalf("search pull request numbers: %v", err)
+	}
+
+	if got, want := numbers, []int{1, 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if searchRequests != 2 {
+		t.Fatalf("got %d requests, want 2", searchRequests)
 	}
 }
 
@@ -125,6 +207,8 @@ func newPaginatedPullRequestClient(t *testing.T, total int) (*RESTGitHubClient, 
 		baseURL:    server.URL + "/api/v3/",
 		repository: Repository{Host: parsedURL.Host, Scheme: parsedURL.Scheme, Owner: "octo", Name: "example"},
 		token:      "dummy",
+		sleepFn:    func(context.Context, time.Duration) error { return nil },
+		nowFn:      time.Now,
 	}, &pageRequests, &detailRequests
 }
 
@@ -142,4 +226,34 @@ func sequence(start, end int) []int {
 		values = append(values, value)
 	}
 	return values
+}
+
+func newTestGitHubClient(server *httptest.Server) *RESTGitHubClient {
+	parsedURL, err := url.Parse(server.URL)
+	if err != nil {
+		panic(err)
+	}
+
+	return &RESTGitHubClient{
+		httpClient: server.Client(),
+		baseURL:    server.URL + "/api/v3/",
+		repository: Repository{Host: parsedURL.Host, Scheme: parsedURL.Scheme, Owner: "octo", Name: "example"},
+		token:      "dummy",
+		sleepFn:    func(context.Context, time.Duration) error { return nil },
+		nowFn:      time.Now,
+	}
+}
+
+func makeSearchItems(start, end int) []struct {
+	Number int `json:"number"`
+} {
+	items := make([]struct {
+		Number int `json:"number"`
+	}, 0, end-start+1)
+	for number := start; number <= end; number++ {
+		items = append(items, struct {
+			Number int `json:"number"`
+		}{Number: number})
+	}
+	return items
 }

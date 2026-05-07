@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -30,6 +31,8 @@ type RESTGitHubClient struct {
 	baseURL    string
 	repository Repository
 	token      string
+	sleepFn    func(context.Context, time.Duration) error
+	nowFn      func() time.Time
 }
 
 func NewRESTGitHubClient(config Config) *RESTGitHubClient {
@@ -46,6 +49,8 @@ func NewRESTGitHubClient(config Config) *RESTGitHubClient {
 		baseURL:    config.Repository.APIBaseURL(),
 		repository: config.Repository,
 		token:      config.Token,
+		sleepFn:    sleepWithContext,
+		nowFn:      time.Now,
 	}
 }
 
@@ -297,19 +302,29 @@ func (c *RESTGitHubClient) ListPullRequestFiles(ctx context.Context, number int)
 }
 
 func (c *RESTGitHubClient) SearchPullRequestNumbers(ctx context.Context, query string) ([]int, error) {
-	params := url.Values{}
-	params.Set("q", query)
+	const pageSize = 100
 
-	var response searchIssuesResponse
-	if err := c.request(ctx, http.MethodGet, "search/issues", params, nil, &response); err != nil {
-		return nil, err
+	var numbers []int
+	for page := 1; ; page++ {
+		params := url.Values{}
+		params.Set("q", query)
+		params.Set("per_page", fmt.Sprintf("%d", pageSize))
+		params.Set("page", fmt.Sprintf("%d", page))
+
+		var response searchIssuesResponse
+		if err := c.request(ctx, http.MethodGet, "search/issues", params, nil, &response); err != nil {
+			return nil, err
+		}
+
+		for _, item := range response.Items {
+			numbers = append(numbers, item.Number)
+		}
+		if len(response.Items) < pageSize {
+			break
+		}
 	}
 
-	numbers := make([]int, 0, len(response.Items))
-	for _, item := range response.Items {
-		numbers = append(numbers, item.Number)
-	}
-	return numbers, nil
+	return uniqueInts(numbers), nil
 }
 
 func (c *RESTGitHubClient) request(
@@ -327,48 +342,132 @@ func (c *RESTGitHubClient) request(
 	endpoint.Path = strings.TrimSuffix(endpoint.Path, "/") + "/" + strings.TrimPrefix(path, "/")
 	endpoint.RawQuery = query.Encode()
 
-	var body io.Reader
+	var requestPayload []byte
 	if requestBody != nil {
 		var buf bytes.Buffer
 		if err := json.NewEncoder(&buf).Encode(requestBody); err != nil {
 			return fmt.Errorf("encode github request: %w", err)
 		}
-		body = &buf
+		requestPayload = buf.Bytes()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
-	if err != nil {
-		return fmt.Errorf("create github request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "go-pr-release")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
-	if requestBody != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
+	const maxRateLimitRetries = 2
+	for attempt := 0; ; attempt++ {
+		var body io.Reader
+		if requestPayload != nil {
+			body = bytes.NewReader(requestPayload)
+		}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("%s %s: %w", method, endpoint.Path, err)
-	}
-	defer resp.Body.Close()
+		req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
+		if err != nil {
+			return fmt.Errorf("create github request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("User-Agent", "go-pr-release")
+		if c.token != "" {
+			req.Header.Set("Authorization", "Bearer "+c.token)
+		}
+		if requestPayload != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("%s %s: unexpected status %d: %s", method, endpoint.Path, resp.StatusCode, strings.TrimSpace(string(payload)))
-	}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("%s %s: %w", method, endpoint.Path, err)
+		}
 
-	if responseBody == nil {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		if wait, shouldRetry := c.rateLimitRetryDelay(resp); shouldRetry && attempt < maxRateLimitRetries {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if err := c.sleep(ctx, wait); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			resp.Body.Close()
+			return fmt.Errorf("%s %s: unexpected status %d: %s", method, endpoint.Path, resp.StatusCode, strings.TrimSpace(string(payload)))
+		}
+
+		if responseBody == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			return nil
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(responseBody); err != nil {
+			resp.Body.Close()
+			return fmt.Errorf("decode github response: %w", err)
+		}
+		resp.Body.Close()
 		return nil
 	}
+}
 
-	if err := json.NewDecoder(resp.Body).Decode(responseBody); err != nil {
-		return fmt.Errorf("decode github response: %w", err)
+func (c *RESTGitHubClient) rateLimitRetryDelay(resp *http.Response) (time.Duration, bool) {
+	if resp.StatusCode != http.StatusTooManyRequests &&
+		!(resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") == "0") {
+		return 0, false
 	}
-	return nil
+
+	if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+		seconds, err := time.ParseDuration(retryAfter + "s")
+		if err == nil {
+			return seconds, true
+		}
+	}
+
+	if reset := resp.Header.Get("X-RateLimit-Reset"); reset != "" {
+		resetAt, err := time.Parse(time.RFC3339, reset)
+		if err == nil {
+			wait := resetAt.Sub(c.now())
+			if wait < 0 {
+				wait = 0
+			}
+			return wait, true
+		}
+		unixSeconds, err := strconv.ParseInt(reset, 10, 64)
+		if err == nil {
+			wait := time.Unix(unixSeconds, 0).Sub(c.now())
+			if wait < 0 {
+				wait = 0
+			}
+			return wait, true
+		}
+	}
+
+	return 0, false
+}
+
+func (c *RESTGitHubClient) sleep(ctx context.Context, duration time.Duration) error {
+	if duration <= 0 {
+		return nil
+	}
+	if c.sleepFn != nil {
+		return c.sleepFn(ctx, duration)
+	}
+	return sleepWithContext(ctx, duration)
+}
+
+func (c *RESTGitHubClient) now() time.Time {
+	if c.nowFn != nil {
+		return c.nowFn()
+	}
+	return time.Now()
+}
+
+func sleepWithContext(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 type searchIssuesResponse struct {

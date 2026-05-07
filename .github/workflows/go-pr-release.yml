@@ -26,12 +26,11 @@ jobs:
 
       - name: Run
         env:
-          GO_PR_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Required
-          GO_PR_RELEASE_RELEASE: main                      # Required. Release Branch: Destination to be merged
-          GO_PR_RELEASE_DEVELOP: develop                   # Required. Develop Branch: Merge source
-          GO_PR_RELEASE_LABELS: release                    # Optional. PullRequest labels. Multiple labels can be specified, separated by `commas`
-          GO_PR_RELEASE_TITLE: ""                          # Optional. specify the title of the pull request
-          GO_PR_RELEASE_TEMPLATE: ".github/template.tmpl"  # Optional. Specify a template file that can be described in `go template`
-          GO_PR_RELEASE_REVIEWERS: tomtwinkle              # Optional. PullRequest reviewers. Multiple reviewers can be specified, separated by `commas`
-          GO_PR_RELEASE_DRY_RUN: false                     # Optional. if true, display only the results to be created without creating PullRequest
-        run: ./go-pr-release
+          GIT_PR_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_PR_RELEASE_BRANCH_PRODUCTION: main
+          GIT_PR_RELEASE_BRANCH_STAGING: develop
+          GIT_PR_RELEASE_LABELS: release
+          GIT_PR_RELEASE_TEMPLATE: ".github/template.tmpl"
+          GIT_PR_RELEASE_ASSIGN_PR_AUTHOR: true
+          GIT_PR_RELEASE_REQUEST_PR_AUTHOR_REVIEW: true
+        run: ./go-pr-release --squashed
